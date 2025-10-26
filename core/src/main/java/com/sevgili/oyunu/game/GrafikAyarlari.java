@@ -1,5 +1,6 @@
 package com.sevgili.oyunu.game;
 
+import com.badlogic.gdx.Gdx; // Eklendi!
 import java.util.HashMap;
 import java.util.Map;
 
@@ -29,6 +30,7 @@ public class GrafikAyarlari {
             Gdx.app.log("AYAR", "Grafik seviyesi ayarlandı: " + seviyeAdi);
         } else {
             Gdx.app.log("UYARI", "Geçersiz grafik seviyesi: " + yeniSeviyeAdi);
+            // Gdx.app.log kullanmadan önce Gdx'in gerçekten var olduğundan emin olunmalı.
         }
     }
 }

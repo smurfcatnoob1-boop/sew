@@ -1,11 +1,11 @@
-# .github/workflows/build.yml - Buildozer ile Android APK Oluşturma
-name: Android APK Build
+# .github/workflows/build.yml - Buildozer Docker İmajı Güncellemesi
+name: Android APK Build (Kivy Docker)
 
 on:
   push:
     branches:
-      - main  # VEYA master, hangisini kullanıyorsanız
-  workflow_dispatch: # Manuel çalıştırma izni verir
+      - main
+  workflow_dispatch: 
 
 jobs:
   build:
@@ -16,8 +16,8 @@ jobs:
       uses: actions/checkout@v4
 
     - name: 2. Buildozer Docker Ortamını Kur ve Çalıştır
-      # GÜNCELLENMİŞ İMAJ: Kivy'nin kendisinin bakımlı imajını kullanıyoruz.
-      uses: docker://kivy/buildozer:stable
+      # GÜNCELLENMİŞ İMAJ: Python 3.10 (en yaygın kullanılan stabil sürüm) etiketini kullanıyoruz.
+      uses: docker://kivy/buildozer:python3-10
       
       with:
         # Buildozer'a gönderilecek komut

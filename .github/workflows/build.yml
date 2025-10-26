@@ -1,0 +1,43 @@
+# .github/workflows/build.yml - Buildozer ile Android APK Oluşturma
+name: Android APK Build
+
+on:
+  push:
+    branches:
+      - main  # VEYA master, hangisini kullanıyorsanız
+  workflow_dispatch: # Manuel çalıştırma izni verir
+
+jobs:
+  build:
+    # Buildozer en stabil Linux ortamında çalışır
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 1. Kaynak Kodu Çıkar
+      uses: actions/checkout@v4
+
+    - name: 2. Buildozer Docker Ortamını Kur
+      # Buildozer ve Kivy için gereken tüm araçları içeren hazır bir Docker imajı
+      uses: docker://buerokratt/buildozer-android:latest 
+      
+      with:
+        # Docker'a gönderilecek Buildozer komutu
+        args: buildozer android debug
+
+    - name: 3. Oluşturulan APK'yı Bul
+      id: find_apk
+      # Buildozer çıktısı genellikle 'bin' klasöründe olur
+      run: |
+        APK_PATH=$(find bin -name "*.apk" | head -n 1)
+        if [ -z "$APK_PATH" ]; then
+          echo "HATA: bin klasöründe APK dosyası bulunamadı."
+          exit 1
+        fi
+        echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+
+    - name: 4. APK'yı GitHub Artifacts'a Yükle
+      uses: actions/upload-artifact@v4
+      with:
+        name: sevgili-oyunu-apk
+        path: ${{ steps.find_apk.outputs.apk_path }}
+        retention-days: 7

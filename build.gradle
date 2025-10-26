@@ -1,0 +1,40 @@
+buildscript {
+    ext.kotlinVersion = '1.9.22'
+    ext.gdxVersion = '1.12.1'
+    ext.androidBuildToolsVersion = '34.0.0'
+    ext.androidCompileSdkVersion = 35
+    ext.androidMinSdkVersion = 33
+    ext.androidTargetSdkVersion = 35
+    
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.2.2'
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion"
+    }
+}
+
+allprojects {
+    apply plugin: "eclipse"
+    apply plugin: "idea"
+    
+    version = '1.0'
+    ext {
+        appName = 'com.sevgili.oyunu' 
+    }
+
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        google()
+        gradlePluginPortal()
+        maven { url "https://s01.oss.sonatype.org/content/repositories/snapshots/" }
+        maven { url "https://s01.oss.sonatype.org/content/repositories/releases/" }
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.buildDir
+}

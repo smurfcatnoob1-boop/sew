@@ -1,0 +1,47 @@
+name: Java Android APK Build (Final Success)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: 
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 1. Kaynak Kodu Çıkar
+      uses: actions/checkout@v4
+
+    - name: 2. Java 17 Kurulumu
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    # 'gradle-version' parametresini ekliyoruz. Bu, Action'ı kendi motorunu kullanmaya zorlar.
+    - name: 3. Gradle Motorunu Kullanarak Derle
+      uses: gradle/gradle-build-action@v2
+      with:
+        # En son Java projelerimizde kullandığımız sürümü belirtiyoruz.
+        gradle-version: 8.4 
+        arguments: :android:assembleDebug
+        # Artık gradlew'yi aramadan, doğrudan kendi 8.4 motorunu kullanacak.
+
+    - name: 4. Oluşturulan APK'yı Bul ve Yükle
+      id: find_apk
+      run: |
+        APK_PATH=$(find android/build/outputs/apk/debug -name "*.apk" | head -n 1)
+        if [ -z "$APK_PATH" ]; then
+          echo "HATA: APK dosyası bulunamadı. (BU ARTIK JAVA KOD HATASI OLMALI)"
+          exit 1
+        fi
+        echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+
+    - name: 5. APK'yı GitHub Artifacts'a Yükle
+      uses: actions/upload-artifact@v4
+      with:
+        name: sevgili-oyunu-java-apk
+        path: ${{ steps.find_apk.outputs.apk_path }}
+        retention-days: 7

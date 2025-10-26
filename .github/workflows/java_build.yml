@@ -1,0 +1,39 @@
+name: Java Android APK Build (Stabil)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: 
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 1. Kaynak Kodu Çıkar
+      uses: actions/checkout@v4
+
+    - name: 2. Java 17 Kurulumu
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+        
+    - name: 3. Gradle Wrapper'a İzin Ver
+      # Bu dosya projeye eklenecek, bu yüzden izin veriyoruz.
+      run: chmod +x gradlew
+
+    - name: 4. Android SDK ve NDK'yı Ayarla
+      uses: android-actions/setup-android@v2
+
+    - name: 5. Gradle ile Derle
+      # Standart Gradle komutu.
+      run: ./gradlew :android:assembleDebug
+      
+    - name: 6. Oluşturulan APK'yı Yükle
+      uses: actions/upload-artifact@v4
+      with:
+        name: sevgili-oyunu-java-apk
+        path: android/build/outputs/apk/debug/android-debug.apk
+        retention-days: 7

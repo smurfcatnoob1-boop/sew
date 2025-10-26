@@ -1,0 +1,28 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+dependencies {
+    implementation project(":core")
+    implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
+    implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
+    implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
+    // Diğer LibGDX uzantıları buraya eklenecek
+}
+
+android {
+    namespace 'com.sevgili.oyunu.android'
+    compileSdk rootProject.ext.androidCompileSdkVersion
+    
+    defaultConfig {
+        applicationId rootProject.ext.appName
+        minSdk rootProject.ext.androidMinSdkVersion
+        targetSdk rootProject.ext.androidTargetSdkVersion
+        versionCode 1
+        versionName "1.0"
+    }
+    
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

@@ -9,24 +9,22 @@ on:
 
 jobs:
   build:
-    # Buildozer en stabil Linux ortamında çalışır
     runs-on: ubuntu-latest
     
     steps:
     - name: 1. Kaynak Kodu Çıkar
       uses: actions/checkout@v4
 
-    - name: 2. Buildozer Docker Ortamını Kur
-      # Buildozer ve Kivy için gereken tüm araçları içeren hazır bir Docker imajı
-      uses: docker://buerokratt/buildozer-android:latest 
+    - name: 2. Buildozer Docker Ortamını Kur ve Çalıştır
+      # GÜNCELLENMİŞ İMAJ: Kivy'nin kendisinin bakımlı imajını kullanıyoruz.
+      uses: docker://kivy/buildozer:stable
       
       with:
-        # Docker'a gönderilecek Buildozer komutu
+        # Buildozer'a gönderilecek komut
         args: buildozer android debug
 
     - name: 3. Oluşturulan APK'yı Bul
       id: find_apk
-      # Buildozer çıktısı genellikle 'bin' klasöründe olur
       run: |
         APK_PATH=$(find bin -name "*.apk" | head -n 1)
         if [ -z "$APK_PATH" ]; then

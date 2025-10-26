@@ -1,4 +1,4 @@
-name: Java Android APK Build (Final Bypass)
+name: Java Android APK Build (Final Success)
 
 on:
   push:
@@ -20,19 +20,21 @@ jobs:
         distribution: 'zulu'
         java-version: '17'
 
-    # Bu Action, tüm JAR, cache ve izin sorunlarını kendi içinde çözer.
+    # 'gradle-version' parametresini ekliyoruz. Bu, Action'ı kendi motorunu kullanmaya zorlar.
     - name: 3. Gradle Motorunu Kullanarak Derle
       uses: gradle/gradle-build-action@v2
       with:
+        # En son Java projelerimizde kullandığımız sürümü belirtiyoruz.
+        gradle-version: 8.4 
         arguments: :android:assembleDebug
-        # gradlew'yi atlayıp, Java projesini kendi Gradle motoruyla derlemesini istiyoruz.
+        # Artık gradlew'yi aramadan, doğrudan kendi 8.4 motorunu kullanacak.
 
     - name: 4. Oluşturulan APK'yı Bul ve Yükle
       id: find_apk
       run: |
         APK_PATH=$(find android/build/outputs/apk/debug -name "*.apk" | head -n 1)
         if [ -z "$APK_PATH" ]; then
-          echo "HATA: APK dosyası bulunamadı (Artık Java yapılandırma hatası bekleniyor)."
+          echo "HATA: APK dosyası bulunamadı. (BU ARTIK JAVA KOD HATASI OLMALI)"
           exit 1
         fi
         echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT

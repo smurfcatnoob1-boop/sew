@@ -1,4 +1,4 @@
-name: Kotlin Android Build (Gradle - Son Umut)
+name: Kotlin Android Build (Son Deneme)
 
 on:
   push:
@@ -26,28 +26,16 @@ jobs:
         path: ~/.android/build-cache
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/build.gradle*') }}
 
-    - name: 4. Gradle Wrapper JAR'ı İndir ve İzinleri Ver (Kesin Çözüm)
-      # JAR dosyasının varlığını kontrol eder ve yoksa indirir, sonra tüm betiklere izin verir.
-      run: |
-        mkdir -p gradle/wrapper
-        JAR_PATH="gradle/wrapper/gradle-wrapper.jar"
-        
-        # Eğer dosya bozuk veya yoksa indir.
-        if [ ! -f $JAR_PATH ] || ! unzip -t $JAR_PATH > /dev/null 2>&1; then
-          echo "JAR dosyası bozuk/yok, yeniden indiriliyor..."
-          curl -L 'https://repo.maven.apache.org/maven2/org/gradle/wrapper/gradle-wrapper/8.4/gradle-wrapper-8.4.jar' -o $JAR_PATH
-        fi
-        
-        # gradlew ve JAR'a yürütme izinlerini ver
-        chmod +x gradlew
-        chmod +x $JAR_PATH
-        ls -l gradle/wrapper/
+    # JAR indirme adımı kaldırıldı, artık projede var.
+    
+    - name: 4. Gradle Wrapper'a Yürütme İzni Ver
+      run: chmod +x gradlew
 
     - name: 5. Android SDK ve NDK'yı Ayarla
       uses: android-actions/setup-android@v2
 
-    - name: 6. Android/Gradle ile Derle (Son Atış)
-      # Bu adım artık JAR dosyasını görmeli ve asıl derleme hatasına geçmeli.
+    - name: 6. Android/Gradle ile Derle (Şimdi Çalışmalı)
+      # JAR dosyası proje içinde olduğu için, bu adım artık çalışmalı.
       run: ./gradlew :android:assembleDebug
       
     - name: 7. Oluşturulan APK'yı Yükle

@@ -1,4 +1,4 @@
-name: Kotlin Android Build (Nihai Bypass)
+name: Kotlin Android Build (Force Bypass)
 
 on:
   push:
@@ -20,22 +20,19 @@ jobs:
         distribution: 'zulu'
         java-version: '17'
 
-    # Bu Action, tüm JAR, cache ve izin sorunlarını kendi içinde çözer.
-    - name: 3. Gradle Cache'ini Kur ve Derle
+    - name: 3. Gradle Cache'ini Kur ve Derle (Direkt Gradle Komutu)
+      # gradlew'yi atlayıp, Gradle Action'ının içindeki motoru kullanmasını istiyoruz.
       uses: gradle/gradle-build-action@v2
       with:
         arguments: :android:assembleDebug
-        # Gerekirse, burada kendi Gradle dağıtımını indirir ve kullanır.
+        # Projenin root build.gradle.kts dosyasını kullanmaya zorlar.
 
     - name: 4. Oluşturulan APK'yı Bul ve Yükle
-      # Gradle Action'ı farklı bir output yapısı kullanabileceği için bulma adımını basitleştiriyoruz.
       id: find_apk
       run: |
         APK_PATH=$(find android/build/outputs/apk/debug -name "*.apk" | head -n 1)
         if [ -z "$APK_PATH" ]; then
-          echo "HATA: APK dosyası bulunamadı."
-          # Bu, artık asıl Gradle yapılandırma (build.gradle.kts) hatamız olacaktır.
-          # Ancak JAR hatasını aşmış olacağız!
+          echo "HATA: APK dosyası bulunamadı (Büyük ihtimalle asıl Gradle hatası)."
           exit 1
         fi
         echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT

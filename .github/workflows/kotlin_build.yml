@@ -15,28 +15,31 @@ jobs:
       uses: actions/checkout@v4
 
     - name: 2. Java 17 Kurulumu (Kotlin/Android için gerekli)
-      # Android geliştirme için gerekli olan Java sürümünü kurar
       uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
         java-version: '17'
 
-    - name: 3. Android SDK Cache'i Kur
-      # Sdk dosyalarını indirme süresini kısaltmak için cache kullanır
+    - name: 3. Android SDK ve Gradle Cache'i Kur
       uses: actions/cache@v4
       with:
         path: ~/.android/build-cache
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/build.gradle*') }}
 
-    - name: 4. Gradle Wrapper'a Yürütme İzni Ver
-      # Gradle çalıştırmak için izin verir
-      run: chmod +x gradlew
+    - name: 4. Gradle Wrapper'ı Otomatik Kur
+      # Bu action, gradlew betiği ve wrapper özelliklerine göre doğru JAR dosyasını indirir
+      # ve izinleri ayarlar (chmod +x dahil).
+      uses: gradle/wrapper-validation-action@v2
 
-    - name: 5. Android/Gradle ile Derle (Derleme Komutu)
-      # LibGDX projelerinde Android APK'sı oluşturan Gradle komutu
+    - name: 5. Android SDK ve NDK'yı Ayarla
+      # Android derlemesi için SDK'yı kuran standart adım
+      uses: android-actions/setup-android@v2
+
+    - name: 6. Android/Gradle ile Derle
+      # Bu adım, eksik build.gradle.kts dosyalarından dolayı HATA VERECEKTİR.
       run: ./gradlew :android:assembleDebug
       
-    - name: 6. Oluşturulan APK'yı Yükle
+    - name: 7. Oluşturulan APK'yı Yükle (Başarılı olursa)
       uses: actions/upload-artifact@v4
       with:
         name: kotlin-android-apk

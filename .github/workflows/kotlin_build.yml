@@ -1,4 +1,4 @@
-name: Kotlin Android Build (Gradle - Son Deneme)
+name: Kotlin Android Build (Gradle - Son Umut)
 
 on:
   push:
@@ -26,27 +26,31 @@ jobs:
         path: ~/.android/build-cache
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/build.gradle*') }}
 
-    # 4. Doğrulama Adımı (gradle/wrapper-validation-action) KALDIRILDI
-    
-    - name: 4. Gradle Wrapper JAR'ı İndir ve Kur (Force)
-      # JAR dosyasını indirmek için zorlayıcı betik
+    - name: 4. Gradle Wrapper JAR'ı İndir ve İzinleri Ver (Kesin Çözüm)
+      # JAR dosyasının varlığını kontrol eder ve yoksa indirir, sonra tüm betiklere izin verir.
       run: |
-        if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-          mkdir -p gradle/wrapper
-          echo "JAR dosyası yok, indiriliyor..."
-          curl -L 'https://repo.maven.apache.org/maven2/org/gradle/wrapper/gradle-wrapper/8.4/gradle-wrapper-8.4.jar' -o gradle/wrapper/gradle-wrapper.jar
+        mkdir -p gradle/wrapper
+        JAR_PATH="gradle/wrapper/gradle-wrapper.jar"
+        
+        # Eğer dosya bozuk veya yoksa indir.
+        if [ ! -f $JAR_PATH ] || ! unzip -t $JAR_PATH > /dev/null 2>&1; then
+          echo "JAR dosyası bozuk/yok, yeniden indiriliyor..."
+          curl -L 'https://repo.maven.apache.org/maven2/org/gradle/wrapper/gradle-wrapper/8.4/gradle-wrapper-8.4.jar' -o $JAR_PATH
         fi
+        
+        # gradlew ve JAR'a yürütme izinlerini ver
+        chmod +x gradlew
+        chmod +x $JAR_PATH
+        ls -l gradle/wrapper/
 
     - name: 5. Android SDK ve NDK'yı Ayarla
       uses: android-actions/setup-android@v2
 
-    - name: 6. Gradle Wrapper'a Yürütme İzni Ver (Tekrar)
-      run: chmod +x gradlew
-
-    - name: 7. Android/Gradle ile Derle
+    - name: 6. Android/Gradle ile Derle (Son Atış)
+      # Bu adım artık JAR dosyasını görmeli ve asıl derleme hatasına geçmeli.
       run: ./gradlew :android:assembleDebug
       
-    - name: 8. Oluşturulan APK'yı Yükle
+    - name: 7. Oluşturulan APK'yı Yükle
       uses: actions/upload-artifact@v4
       with:
         name: kotlin-android-apk

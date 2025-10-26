@@ -22,7 +22,6 @@ allprojects {
     
     version = '1.0'
     ext {
-        # AppName'i, Java paketi gibi nokta içeren bir formata çevirelim (Örn: com.sevgili.oyunu)
         appName = 'com.sevgili.oyunu' 
     }
 

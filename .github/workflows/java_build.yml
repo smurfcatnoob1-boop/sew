@@ -1,4 +1,4 @@
-name: Java Android APK Build (Stabil)
+name: Java Android APK Build (Final Bypass)
 
 on:
   push:
@@ -19,21 +19,27 @@ jobs:
       with:
         distribution: 'zulu'
         java-version: '17'
-        
-    - name: 3. Gradle Wrapper'a İzin Ver
-      # Bu dosya projeye eklenecek, bu yüzden izin veriyoruz.
-      run: chmod +x gradlew
 
-    - name: 4. Android SDK ve NDK'yı Ayarla
-      uses: android-actions/setup-android@v2
+    # Bu Action, tüm JAR, cache ve izin sorunlarını kendi içinde çözer.
+    - name: 3. Gradle Motorunu Kullanarak Derle
+      uses: gradle/gradle-build-action@v2
+      with:
+        arguments: :android:assembleDebug
+        # gradlew'yi atlayıp, Java projesini kendi Gradle motoruyla derlemesini istiyoruz.
 
-    - name: 5. Gradle ile Derle
-      # Standart Gradle komutu.
-      run: ./gradlew :android:assembleDebug
-      
-    - name: 6. Oluşturulan APK'yı Yükle
+    - name: 4. Oluşturulan APK'yı Bul ve Yükle
+      id: find_apk
+      run: |
+        APK_PATH=$(find android/build/outputs/apk/debug -name "*.apk" | head -n 1)
+        if [ -z "$APK_PATH" ]; then
+          echo "HATA: APK dosyası bulunamadı (Artık Java yapılandırma hatası bekleniyor)."
+          exit 1
+        fi
+        echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
+
+    - name: 5. APK'yı GitHub Artifacts'a Yükle
       uses: actions/upload-artifact@v4
       with:
         name: sevgili-oyunu-java-apk
-        path: android/build/outputs/apk/debug/android-debug.apk
+        path: ${{ steps.find_apk.outputs.apk_path }}
         retention-days: 7

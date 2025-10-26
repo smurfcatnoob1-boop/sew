@@ -1,4 +1,4 @@
-name: Kotlin Android Build (Gradle)
+name: Kotlin Android Build (Gradle - Son Deneme)
 
 on:
   push:
@@ -26,20 +26,27 @@ jobs:
         path: ~/.android/build-cache
         key: ${{ runner.os }}-gradle-${{ hashFiles('**/build.gradle*') }}
 
-    - name: 4. Gradle Wrapper'ı Otomatik Kur
-      # Bu action, gradlew betiği ve wrapper özelliklerine göre doğru JAR dosyasını indirir
-      # ve izinleri ayarlar (chmod +x dahil).
-      uses: gradle/wrapper-validation-action@v2
+    # 4. Doğrulama Adımı (gradle/wrapper-validation-action) KALDIRILDI
+    
+    - name: 4. Gradle Wrapper JAR'ı İndir ve Kur (Force)
+      # JAR dosyasını indirmek için zorlayıcı betik
+      run: |
+        if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+          mkdir -p gradle/wrapper
+          echo "JAR dosyası yok, indiriliyor..."
+          curl -L 'https://repo.maven.apache.org/maven2/org/gradle/wrapper/gradle-wrapper/8.4/gradle-wrapper-8.4.jar' -o gradle/wrapper/gradle-wrapper.jar
+        fi
 
     - name: 5. Android SDK ve NDK'yı Ayarla
-      # Android derlemesi için SDK'yı kuran standart adım
       uses: android-actions/setup-android@v2
 
-    - name: 6. Android/Gradle ile Derle
-      # Bu adım, eksik build.gradle.kts dosyalarından dolayı HATA VERECEKTİR.
+    - name: 6. Gradle Wrapper'a Yürütme İzni Ver (Tekrar)
+      run: chmod +x gradlew
+
+    - name: 7. Android/Gradle ile Derle
       run: ./gradlew :android:assembleDebug
       
-    - name: 7. Oluşturulan APK'yı Yükle (Başarılı olursa)
+    - name: 8. Oluşturulan APK'yı Yükle
       uses: actions/upload-artifact@v4
       with:
         name: kotlin-android-apk

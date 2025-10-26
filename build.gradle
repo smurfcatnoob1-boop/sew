@@ -2,9 +2,9 @@ buildscript {
     ext.kotlinVersion = '1.9.22'
     ext.gdxVersion = '1.12.1'
     ext.androidBuildToolsVersion = '34.0.0'
-    ext.androidCompileSdkVersion = 35  # Android 15
-    ext.androidMinSdkVersion = 33      # Android 13 (Minimum)
-    ext.androidTargetSdkVersion = 35   # Android 15
+    ext.androidCompileSdkVersion = 35
+    ext.androidMinSdkVersion = 33
+    ext.androidTargetSdkVersion = 35
     
     repositories {
         google()

@@ -1,0 +1,44 @@
+name: Kotlin Android Build (Gradle)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: 
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 1. Kaynak Kodu Çıkar
+      uses: actions/checkout@v4
+
+    - name: 2. Java 17 Kurulumu (Kotlin/Android için gerekli)
+      # Android geliştirme için gerekli olan Java sürümünü kurar
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    - name: 3. Android SDK Cache'i Kur
+      # Sdk dosyalarını indirme süresini kısaltmak için cache kullanır
+      uses: actions/cache@v4
+      with:
+        path: ~/.android/build-cache
+        key: ${{ runner.os }}-gradle-${{ hashFiles('**/build.gradle*') }}
+
+    - name: 4. Gradle Wrapper'a Yürütme İzni Ver
+      # Gradle çalıştırmak için izin verir
+      run: chmod +x gradlew
+
+    - name: 5. Android/Gradle ile Derle (Derleme Komutu)
+      # LibGDX projelerinde Android APK'sı oluşturan Gradle komutu
+      run: ./gradlew :android:assembleDebug
+      
+    - name: 6. Oluşturulan APK'yı Yükle
+      uses: actions/upload-artifact@v4
+      with:
+        name: kotlin-android-apk
+        path: android/build/outputs/apk/debug/android-debug.apk
+        retention-days: 7

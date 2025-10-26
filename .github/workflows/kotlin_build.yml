@@ -1,4 +1,4 @@
-name: Kotlin Android Build (Son Deneme)
+name: Kotlin Android Build (Nihai Bypass)
 
 on:
   push:
@@ -14,33 +14,35 @@ jobs:
     - name: 1. Kaynak Kodu Çıkar
       uses: actions/checkout@v4
 
-    - name: 2. Java 17 Kurulumu (Kotlin/Android için gerekli)
+    - name: 2. Java 17 Kurulumu
       uses: actions/setup-java@v4
       with:
         distribution: 'zulu'
         java-version: '17'
 
-    - name: 3. Android SDK ve Gradle Cache'i Kur
-      uses: actions/cache@v4
+    # Bu Action, tüm JAR, cache ve izin sorunlarını kendi içinde çözer.
+    - name: 3. Gradle Cache'ini Kur ve Derle
+      uses: gradle/gradle-build-action@v2
       with:
-        path: ~/.android/build-cache
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/build.gradle*') }}
+        arguments: :android:assembleDebug
+        # Gerekirse, burada kendi Gradle dağıtımını indirir ve kullanır.
 
-    # JAR indirme adımı kaldırıldı, artık projede var.
-    
-    - name: 4. Gradle Wrapper'a Yürütme İzni Ver
-      run: chmod +x gradlew
+    - name: 4. Oluşturulan APK'yı Bul ve Yükle
+      # Gradle Action'ı farklı bir output yapısı kullanabileceği için bulma adımını basitleştiriyoruz.
+      id: find_apk
+      run: |
+        APK_PATH=$(find android/build/outputs/apk/debug -name "*.apk" | head -n 1)
+        if [ -z "$APK_PATH" ]; then
+          echo "HATA: APK dosyası bulunamadı."
+          # Bu, artık asıl Gradle yapılandırma (build.gradle.kts) hatamız olacaktır.
+          # Ancak JAR hatasını aşmış olacağız!
+          exit 1
+        fi
+        echo "apk_path=$APK_PATH" >> $GITHUB_OUTPUT
 
-    - name: 5. Android SDK ve NDK'yı Ayarla
-      uses: android-actions/setup-android@v2
-
-    - name: 6. Android/Gradle ile Derle (Şimdi Çalışmalı)
-      # JAR dosyası proje içinde olduğu için, bu adım artık çalışmalı.
-      run: ./gradlew :android:assembleDebug
-      
-    - name: 7. Oluşturulan APK'yı Yükle
+    - name: 5. APK'yı GitHub Artifacts'a Yükle
       uses: actions/upload-artifact@v4
       with:
         name: kotlin-android-apk
-        path: android/build/outputs/apk/debug/android-debug.apk
+        path: ${{ steps.find_apk.outputs.apk_path }}
         retention-days: 7

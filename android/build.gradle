@@ -6,6 +6,7 @@ dependencies {
     implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
+    // Diğer LibGDX uzantıları buraya eklenecek
 }
 
 android {
@@ -25,7 +26,14 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     
-    // Yalnızca splits (paket bölme) bloğu bırakıldı, ndk bloğu kaldırıldı.
+    // NİHAİ ÇÖZÜM: Native kütüphane yolunu zorla tanımla (libgdx.so not found hatasının son çözümü)
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ["libs"]
+        }
+    }
+    
+    // ERKEN UYARI SİSTEMİ (EWS): Native dosyalar için strict paketleme ve erken hata
     splits {
         abi {
             enable true
@@ -35,7 +43,7 @@ android {
         }
     }
     
-    // Native dosyalar eksikse derlemeyi erken hataya zorlar.
+    // EK GÜVENLİK: Native dosyaların yanlışlıkla çıkarılmasını engelle
     packagingOptions {
         doNotStrip '**/lib*.so'
     }

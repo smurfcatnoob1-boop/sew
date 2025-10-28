@@ -4,8 +4,8 @@ import android.os.Bundle;
 
 import com.badlogic.gdx.backends.android.AndroidApplication;
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration;
-// KESİN ÇÖZÜM: SevgiliOyunu sınıfını bulmak için wildcard (*) kullanıldı.
-import com.sevgili.oyunu.*;
+// KESİN ÇÖZÜM: Core modülünün paket adının doğru varsayımı: com.sevgili.oyunu.SevgiliOyunu'dan SevgiliOyunu'nu import et.
+import com.sevgili.oyunu.SevgiliOyunu; 
 import com.badlogic.gdx.utils.GdxNativesLoader;
 
 public class AndroidLauncher extends AndroidApplication {
@@ -13,11 +13,10 @@ public class AndroidLauncher extends AndroidApplication {
 protected void onCreate (Bundle savedInstanceState) {
 super.onCreate(savedInstanceState);
 
-// Native kütüphanelerin yüklenmesini garanti eden kod
+// Native kütüphanelerin yüklenmesini garanti eden kod (libgdx.so fix'i)
 GdxNativesLoader.load();
 
 AndroidApplicationConfiguration config = new AndroidApplicationConfiguration();
-// Artık SevgiliOyunu sınıfını bulması gerekiyor.
 initialize(new SevgiliOyunu(), config);
 }
 }

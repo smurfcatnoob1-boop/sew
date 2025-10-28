@@ -12,11 +12,6 @@ dependencies {
 android {
     namespace 'com.sevgili.oyunu.android'
     compileSdk rootProject.ext.androidCompileSdkVersion
-    
-    // **NİHAİ NATIVE FİX:** ndk bloğu defaultConfig'ten android bloğunun üst seviyesine taşındı.
-    ndk {
-        abiFilters 'armeabi-v7a', 'arm64-v8a'
-    }
 
     defaultConfig {
         applicationId rootProject.ext.appName
@@ -24,6 +19,11 @@ android {
         targetSdk rootProject.ext.androidTargetSdkVersion
         versionCode 1
         versionName "1.0"
+        
+        // **NİHAİ NATIVE FİX:** ndk bloğu doğru yer olan defaultConfig içine geri taşındı (Önceki syntax hatasını çözer).
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        }
     }
 
     compileOptions {

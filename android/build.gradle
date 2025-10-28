@@ -11,7 +11,7 @@ dependencies {
 
 android {
     namespace 'com.sevgili.oyunu.android'
-    // KRİTİK HATA ÇÖZÜMÜ: compileSdk satırı geri eklendi ve doğru yerde.
+    // Gradle syntax hatalarını çözen satır
     compileSdk rootProject.ext.androidCompileSdkVersion 
     
     defaultConfig {
@@ -27,12 +27,19 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     
-    // LibGDX'in native dosyaları arayacağı yeri kesin olarak gösteren kural
-    // Bu kural, sizin manuel olarak eklediğiniz dosyaları APK'ya dahil edecektir.
+    // 1. KURAL: Manuel eklenen dosyaların yolunu gösterir
     sourceSets {
         main {
             jniLibs.srcDirs = ["libs"]
         }
+    }
+    
+    // 2. NİHAİ ÇÖZÜM: libgdx.so'nun APK'dan çıkarılmasını engeller ve doğru paketlenmesini sağlar.
+    packagingOptions {
+        // Bu, LibGDX'in native dosya çıkarma hatasını kesin olarak çözer.
+        doNotStrip '**/libgdx.so'
+        pickFirst 'lib/armeabi-v7a/libgdx.so'
+        pickFirst 'lib/arm64-v8a/libgdx.so'
     }
     
     // Tüm hatalı ve çakışan custom görevler TEMİZLENMİŞTİR.

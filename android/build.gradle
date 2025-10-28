@@ -4,10 +4,10 @@ apply plugin: 'kotlin-android'
 dependencies {
     implementation project(":core")
     implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
-    # libgdx.so dosyasını eklemek için gereken bağımlılıklar eklendi
+    // libgdx.so dosyasını eklemek için gereken bağımlılıklar eklendi
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
-    # Diğer LibGDX uzantıları buraya eklenecek
+    // Diğer LibGDX uzantıları buraya eklenecek
 }
 
 android {
@@ -27,7 +27,7 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    # Sözdizimi düzeltildi: compileOptions'ın dışına alındı.
+    // Sözdizimi düzeltildi: compileOptions'ın dışına alındı.
     packagingOptions {
         pickFirst "META-INF/LICENSE"
         pickFirst "META-INF/NOTICE"
@@ -37,7 +37,7 @@ android {
         pickFirst "META-INF/DEPENDENCIES.txt"
     }
 
-    # Sözdizimi düzeltildi: compileOptions'ın dışına alındı.
+    // Sözdizimi düzeltildi: compileOptions'ın dışına alındı.
     sourceSets {
         main {
             jniLibs.srcDirs = ["libs"]

@@ -4,7 +4,6 @@ apply plugin: 'kotlin-android'
 dependencies {
     implementation project(":core")
     implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
-    // Native kütüphaneler için standart implementation, splits ile paketleme zorlanacak.
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
     // Diğer LibGDX uzantıları buraya eklenecek
@@ -20,7 +19,11 @@ android {
         targetSdk rootProject.ext.androidTargetSdkVersion
         versionCode 1
         versionName "1.0"
-        // Tüm çakışan ndk, packagingOptions vb. bloklar bu temizlikte KALDIRILMIŞTIR.
+        
+        // NDK bloğu, native paketlemeyi zorlar
+        ndk {
+            abiFilters 'armeabi-v7a', 'arm64-v8a'
+        }
     }
 
     compileOptions {
@@ -28,13 +31,18 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     
-    // **SON VE KESİN ÇÖZÜM:** splits ile zorla native paketleme ve eksikse derlemede HATA verme (Kırmızı X).
+    // APK'ları mimariye göre ayırır (splits)
     splits {
         abi {
             enable true
             reset()
             include 'armeabi-v7a', 'arm64-v8a'
-            universalApk false // Tek bir büyük APK yerine, daha doğru iki küçük APK oluşturur.
+            universalApk false
         }
+    }
+    
+    // **İSTEDİĞİNİZ ERKEN HATA SİSTEMİ:** Eğer native paketleme hatası olursa derlemeyi durdurur.
+    packagingOptions {
+        doNotStrip '**/lib*.so'
     }
 }

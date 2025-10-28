@@ -4,6 +4,7 @@ apply plugin: 'kotlin-android'
 dependencies {
     implementation project(":core")
     implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
+    // Native kütüphaneler için standart implementation, splits ile paketleme zorlanacak.
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
     // Diğer LibGDX uzantıları buraya eklenecek
@@ -12,37 +13,28 @@ dependencies {
 android {
     namespace 'com.sevgili.oyunu.android'
     compileSdk rootProject.ext.androidCompileSdkVersion
-
+    
     defaultConfig {
         applicationId rootProject.ext.appName
         minSdk rootProject.ext.androidMinSdkVersion
         targetSdk rootProject.ext.androidTargetSdkVersion
         versionCode 1
         versionName "1.0"
-        
-        // **NİHAİ NATIVE FİX:** ndk bloğu doğru yer olan defaultConfig içine geri taşındı (Önceki syntax hatasını çözer).
-        ndk {
-            abiFilters 'armeabi-v7a', 'arm64-v8a'
-        }
+        // Tüm çakışan ndk, packagingOptions vb. bloklar bu temizlikte KALDIRILMIŞTIR.
     }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-
-    packagingOptions {
-        pickFirst "META-INF/LICENSE"
-        pickFirst "META-INF/NOTICE"
-        pickFirst "META-INF/NOTICE.txt"
-        pickFirst "META-INF/LICENSE.txt"
-        pickFirst "META-INF/DEPENDENCIES"
-        pickFirst "META-INF/DEPENDENCIES.txt"
-    }
-
-    sourceSets {
-        main {
-            jniLibs.srcDirs = ["libs"]
+    
+    // **SON VE KESİN ÇÖZÜM:** splits ile zorla native paketleme ve eksikse derlemede HATA verme (Kırmızı X).
+    splits {
+        abi {
+            enable true
+            reset()
+            include 'armeabi-v7a', 'arm64-v8a'
+            universalApk false // Tek bir büyük APK yerine, daha doğru iki küçük APK oluşturur.
         }
     }
 }

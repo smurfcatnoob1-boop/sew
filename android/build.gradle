@@ -9,6 +9,18 @@ dependencies {
     // Diğer LibGDX uzantıları buraya eklenecek
 }
 
+// BU KISIM, GEREKLİ NATIVE DOSYALARI ZORLA KOPYALAR (NİHAİ ÇÖZÜM)
+task copyAndroidNatives(type: Copy) {
+    // Native JAR dosyalarından .so uzantılı dosyaları bul
+    from(configurations.debugRuntimeClasspath.filter { it.name.endsWith('jar') && it.name.contains('natives') }.collect { zipTree(it) })
+    // Onları, jniLibs.srcDirs'ın göreceği 'libs' klasörüne koy
+    into 'libs' 
+}
+// Gelişmiş Erken Uyarı Sistemi (EWS): Derleme başlamadan önce bu zorla kopyalama görevini çalıştır.
+// Eğer kopyalama başarısız olursa, derleme hemen Kırmızı X ile durur.
+tasks.findByName('preBuild').dependsOn copyAndroidNatives
+
+
 android {
     namespace 'com.sevgili.oyunu.android'
     compileSdk rootProject.ext.androidCompileSdkVersion
@@ -26,12 +38,12 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     
-    // NİHAİ ÇÖZÜM: Native kütüphanelerin yolunu zorla tanımlayan tek kural.
+    // LibGDX'in native dosyaları arayacağı yeri kesin olarak gösteren kural
     sourceSets {
         main {
             jniLibs.srcDirs = ["libs"]
         }
     }
     
-    // Tüm splits, packagingOptions, ndk blokları çakışmayı önlemek için KALDIRILMIŞTIR.
+    // Çakışmaya neden olan tüm splits, packagingOptions, ndk blokları TEMİZLENMİŞTİR.
 }

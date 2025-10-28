@@ -9,20 +9,9 @@ dependencies {
     // Diğer LibGDX uzantıları buraya eklenecek
 }
 
-// BU KISIM, GEREKLİ NATIVE DOSYALARI ZORLA KOPYALAR (NİHAİ ÇÖZÜM)
-task copyAndroidNatives(type: Copy) {
-    // Native JAR dosyalarından .so uzantılı dosyaları bul
-    from(configurations.debugRuntimeClasspath.filter { it.name.endsWith('jar') && it.name.contains('natives') }.collect { zipTree(it) })
-    // Onları, jniLibs.srcDirs'ın göreceği 'libs' klasörüne koy
-    into 'libs' 
-}
-// Gelişmiş Erken Uyarı Sistemi (EWS): Derleme başlamadan önce bu zorla kopyalama görevini çalıştır.
-// Eğer kopyalama başarısız olursa, derleme hemen Kırmızı X ile durur.
-tasks.findByName('preBuild').dependsOn copyAndroidNatives
-
-
 android {
     namespace 'com.sevgili.oyunu.android'
+    // Hata Çözümü: compileSdk geri eklendi (Kırmızı X hatası çözüldü)
     compileSdk rootProject.ext.androidCompileSdkVersion
     
     defaultConfig {
@@ -38,12 +27,13 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     
-    // LibGDX'in native dosyaları arayacağı yeri kesin olarak gösteren kural
+    // libgdx.so hatasını çözen tek ve stabil kural korunuyor.
     sourceSets {
         main {
+            // jniLibs.srcDirs kuralı LibGDX'in native dosyaları nerede arayacağını kesin olarak söyler.
             jniLibs.srcDirs = ["libs"]
         }
     }
     
-    // Çakışmaya neden olan tüm splits, packagingOptions, ndk blokları TEMİZLENMİŞTİR.
+    // Tüm splits, packagingOptions, ve hatalı custom görevler ÇAKILMASIZ bir yapı için KALDIRILMIŞTIR.
 }

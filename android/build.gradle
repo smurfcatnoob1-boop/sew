@@ -26,25 +26,12 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     
-    // NİHAİ ÇÖZÜM: Native kütüphane yolunu zorla tanımla (libgdx.so not found hatasının son çözümü)
+    // NİHAİ ÇÖZÜM: Native kütüphanelerin yolunu zorla tanımlayan tek kural.
     sourceSets {
         main {
             jniLibs.srcDirs = ["libs"]
         }
     }
     
-    // ERKEN UYARI SİSTEMİ (EWS): Native dosyalar için strict paketleme ve erken hata
-    splits {
-        abi {
-            enable true
-            reset()
-            include 'armeabi-v7a', 'arm64-v8a'
-            universalApk false
-        }
-    }
-    
-    // EK GÜVENLİK: Native dosyaların yanlışlıkla çıkarılmasını engelle
-    packagingOptions {
-        doNotStrip '**/lib*.so'
-    }
+    // Tüm splits, packagingOptions, ndk blokları çakışmayı önlemek için KALDIRILMIŞTIR.
 }

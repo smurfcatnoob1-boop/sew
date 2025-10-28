@@ -9,9 +9,21 @@ dependencies {
     // Diğer LibGDX uzantıları buraya eklenecek
 }
 
+// BU GÖREV, NATIVE DOSYALARI ZORLA KOPYALAR VE EKSİKSE EWS'Yİ ÇALIŞTIRIR
+task copyAndroidNatives(type: Copy) {
+    // 'implementation' bağımlılıklarından native JAR'ları bul ve .so dosyalarını çıkar.
+    from(configurations.getByName("implementation").filter { it.name.endsWith('jar') && it.name.contains('natives') }.collect { zipTree(it) })
+    // Onları, jniLibs.srcDirs'ın göreceği 'libs' klasörüne koy.
+    into 'libs' 
+}
+// Gelişmiş Erken Uyarı Sistemi (EWS): Derleme başlamadan önce bu zorla kopyalama görevini çalıştır.
+// Kopyalama başarısız olursa, derleme hemen KIRMIZI X ile durur.
+tasks.findByName('preBuild').dependsOn copyAndroidNatives
+
+
 android {
     namespace 'com.sevgili.oyunu.android'
-    // Hata Çözümü: compileSdk geri eklendi (Kırmızı X hatası çözüldü)
+    // Hata Çözümü: compileSdk geri eklendi
     compileSdk rootProject.ext.androidCompileSdkVersion
     
     defaultConfig {
@@ -27,13 +39,10 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
     
-    // libgdx.so hatasını çözen tek ve stabil kural korunuyor.
+    // LibGDX'in native dosyaları arayacağı yeri kesin olarak gösteren kural
     sourceSets {
         main {
-            // jniLibs.srcDirs kuralı LibGDX'in native dosyaları nerede arayacağını kesin olarak söyler.
             jniLibs.srcDirs = ["libs"]
         }
     }
-    
-    // Tüm splits, packagingOptions, ve hatalı custom görevler ÇAKILMASIZ bir yapı için KALDIRILMIŞTIR.
 }

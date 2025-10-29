@@ -11,7 +11,6 @@ import com.badlogic.gdx.graphics.g3d.environment.DirectionalLight;
 import com.badlogic.gdx.math.Vector3;
 import java.util.HashMap;
 
-// Kotlin'deki SevgiliOyunu sınıfının Java karşılığı
 public class SevgiliOyunu extends ApplicationAdapter {
 
     private PerspectiveCamera kamera;
@@ -23,8 +22,7 @@ public class SevgiliOyunu extends ApplicationAdapter {
 
     @Override
     public void create() {
-        // 1. Grafik ve Performans Ayarları (Statik çağrıyı güvenli hale getiriyoruz)
-        // Eğer GrafikAyarlari hatasız yüklenirse, bu satır çalışır.
+        // 1. Grafik ve Performans Ayarları (Güvenlik kodları korunuyor)
         try {
             int antiAliasing = (int) GrafikAyarlari.mevcutAyarlar.get("anti_aliasing");
             Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
@@ -44,7 +42,15 @@ public class SevgiliOyunu extends ApplicationAdapter {
         environment = createEnvironment();
 
         // 3. Oyun Bileşenlerini Başlatma
-        // yerelKarakter = new KarakterErkek(0, 5f, 0f); // Model yükleme hatası ihtimaline karşı hala yorum satırında kalmalı.
+        // KRİTİK BÖLÜM: Yükleme hatasını yakalayıp, loga yazmayı zorluyoruz.
+        try {
+            yerelKarakter = new KarakterErkek(0, 5f, 0f); 
+            Gdx.app.log("OYUN", "Karakter Yüklendi.");
+        } catch (Exception e) {
+            // Hata yakalandı! Logcat'te aranması gereken ana etiket budur.
+            Gdx.app.error("ASSET_HATA_KRITIK", "Karakter (Model) YÜKLENEMEDİ! Detay: " + e.getMessage());
+            Gdx.app.log("ASSET_HATA_KRITIK", "Lütfen 'assets/' klasöründeki model dosyasının adını ve yolunu kontrol edin.");
+        }
 
         Gdx.app.log("OYUN", "Java/LibGDX 3D Oyun Başlatıldı. Seviye: Harita Yüklendi.");
     }                                                             
@@ -61,11 +67,10 @@ public class SevgiliOyunu extends ApplicationAdapter {
         Gdx.gl.glClearColor(0.2f, 0.2f, 0.2f, 1f); // Gri temizleme rengi
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
 
-        // ModelBatch'i çalıştırmadan önce Karakter sınıfının yüklenmesini bekleyelim
-        // modelBatch.begin(kamera);
-        // modelBatch.end();
-        
-        // Bu sadece gri ekranı gösterecektir.
+        // 3D Modelleme: Karakter yüklenemezse yerelKarakter null kalır ve çizim yapılmaz.
+        modelBatch.begin(kamera);
+        // Map ve karakterler burada çizilir. (Yerine çizim kodu eklenecektir)
+        modelBatch.end();
     }
 
     @Override

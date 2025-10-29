@@ -41,6 +41,4 @@ android {
         pickFirst 'lib/armeabi-v7a/libgdx.so'
         pickFirst 'lib/arm64-v8a/libgdx.so'
     }
-    
-    // Tüm hatalı ve çakışan custom görevler TEMİZLENMİŞTİR.
 }

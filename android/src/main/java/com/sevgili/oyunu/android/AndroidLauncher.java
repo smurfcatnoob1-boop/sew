@@ -4,19 +4,19 @@ import android.os.Bundle;
 
 import com.badlogic.gdx.backends.android.AndroidApplication;
 import com.badlogic.gdx.backends.android.AndroidApplicationConfiguration;
-// SON VE DOĞRU PAKET ADI: SevgiliOyunu sınıfı, 'game' paketinin içinde.
+// KRİTİK DÜZELTME: Doğru paket yolu import ediliyor.
 import com.sevgili.oyunu.game.SevgiliOyunu; 
 import com.badlogic.gdx.utils.GdxNativesLoader;
 
 public class AndroidLauncher extends AndroidApplication {
-@Override
-protected void onCreate (Bundle savedInstanceState) {
-super.onCreate(savedInstanceState);
+    @Override
+    protected void onCreate (Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
 
-// Native kütüphanelerin yüklenmesini garanti eden kod (libgdx.so fix)
-GdxNativesLoader.load();
+        // Native kütüphanelerin yüklenmesini garanti eden kod (libgdx.so fix)
+        GdxNativesLoader.load();
 
-AndroidApplicationConfiguration config = new AndroidApplicationConfiguration();
-initialize(new SevgiliOyunu(), config);
-}
+        AndroidApplicationConfiguration config = new AndroidApplicationConfiguration();
+        initialize(new SevgiliOyunu(), config);
+    }
 }

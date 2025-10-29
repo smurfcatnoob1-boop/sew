@@ -11,7 +11,7 @@ import com.badlogic.gdx.graphics.g3d.environment.DirectionalLight;
 import com.badlogic.gdx.math.Vector3;
 import java.util.HashMap;
 
-// Bu dosya içeriği, sizin son paylaştığınız orijinal koddur.
+// Kotlin'deki SevgiliOyunu sınıfının Java karşılığı
 public class SevgiliOyunu extends ApplicationAdapter {
 
     private PerspectiveCamera kamera;
@@ -23,9 +23,14 @@ public class SevgiliOyunu extends ApplicationAdapter {
 
     @Override
     public void create() {
-        // 1. Grafik ve Performans Ayarları (Varsayalım ki GrafikAyarlari sınıfı var)
-        // int antiAliasing = (int) GrafikAyarlari.mevcutAyarlar.get("anti_aliasing"); // Bu satır hata yapabilir.
-        Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        // 1. Grafik ve Performans Ayarları (Statik çağrıyı güvenli hale getiriyoruz)
+        // Eğer GrafikAyarlari hatasız yüklenirse, bu satır çalışır.
+        try {
+            int antiAliasing = (int) GrafikAyarlari.mevcutAyarlar.get("anti_aliasing");
+            Gdx.gl.glEnable(GL20.GL_DEPTH_TEST);
+        } catch (Exception e) {
+            Gdx.app.error("GRAFIK_HATA", "Grafik Ayarları yüklenemedi: " + e.getMessage());
+        }
 
         // 2. Kamera ve Ortam Kurulumu                                    
         kamera = new PerspectiveCamera(67, Gdx.graphics.getWidth(), Gdx.graphics.getHeight());
@@ -39,9 +44,9 @@ public class SevgiliOyunu extends ApplicationAdapter {
         environment = createEnvironment();
 
         // 3. Oyun Bileşenlerini Başlatma
-        // yerelKarakter = new KarakterErkek(0, 5f, 0f); // BU SATIRDA MODEL YÜKLEME HATASI OLABİLİR!
+        // yerelKarakter = new KarakterErkek(0, 5f, 0f); // Model yükleme hatası ihtimaline karşı hala yorum satırında kalmalı.
 
-        Gdx.app.log("OYUN", "Java/LibGDX 3D Oyun Başlatıldı. Seviye: Harita Yüklendi."); // GrafikAyarlari.seviyeAdi yerine sabit metin
+        Gdx.app.log("OYUN", "Java/LibGDX 3D Oyun Başlatıldı. Seviye: Harita Yüklendi.");
     }                                                             
     private Environment createEnvironment() {                             
         Environment env = new Environment();
@@ -52,17 +57,15 @@ public class SevgiliOyunu extends ApplicationAdapter {
 
     @Override
     public void render() {
-        // Yerel karakteri güncelle (Java Mantığı)
-        // yerelKarakter.update(9.8f, 0f, 100f); // Bu da hata yapabilir.
-
         // Çizim
-        Gdx.gl.glClearColor(0.2f, 0.2f, 0.2f, 1f);
+        Gdx.gl.glClearColor(0.2f, 0.2f, 0.2f, 1f); // Gri temizleme rengi
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
 
-        // 3D Modelleme (Renderer Java sınıfı çizimi buraya gelir)
-        modelBatch.begin(kamera);
-        // Map ve karakterler burada çizilir.
-        modelBatch.end();
+        // ModelBatch'i çalıştırmadan önce Karakter sınıfının yüklenmesini bekleyelim
+        // modelBatch.begin(kamera);
+        // modelBatch.end();
+        
+        // Bu sadece gri ekranı gösterecektir.
     }
 
     @Override

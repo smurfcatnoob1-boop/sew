@@ -13,6 +13,11 @@ dependencies {
     implementation "com.badlogicgames.gdx:gdx-gltf:$gdxVersion"
     implementation "com.badlogicgames.gdx:gdx-gltf-platform:$gdxVersion:natives-armeabi-v7a"
     implementation "com.badlogicgames.gdx:gdx-gltf-platform:$gdxVersion:natives-arm64-v8a"
+
+    // CI/CD ÖN BELLEĞİNİ ZORLA: Güncel olmayan kütüphaneleri yeniden indirmesini sağlamak için ufak bir Native değişimi yapıyoruz.
+    // Bu, sunucunun eski hatalı önbelleğe güvenmek yerine, her şeyi sıfırdan kontrol etmesini sağlayacak.
+    implementation "com.badlogicgames.gdx:gdx-bullet-platform:$gdxVersion:natives-arm64-v8a"
+    implementation "com.badlogicgames.gdx:gdx-bullet:$gdxVersion"
 }
 
 android {
@@ -33,16 +38,13 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 
-    // 1. KURAL: Manuel eklenen dosyaların yolunu gösterir
     sourceSets {
         main {
             jniLibs.srcDirs = ["libs"]
         }
     }
 
-    // 2. NİHAİ ÇÖZÜM: libgdx.so'nun APK'dan çıkarılmasını engeller ve doğru paketlenmesini sağlar.
     packagingOptions {
-        // Bu, LibGDX'in native dosya çıkarma hatasını kesin olarak çözer.
         doNotStrip '**/libgdx.so'
         pickFirst 'lib/armeabi-v7a/libgdx.so'
         pickFirst 'lib/arm64-v8a/libgdx.so'

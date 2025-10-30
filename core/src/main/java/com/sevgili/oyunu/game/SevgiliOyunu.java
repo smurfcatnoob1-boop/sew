@@ -9,11 +9,9 @@ import com.badlogic.gdx.graphics.g3d.ModelBatch;
 import com.badlogic.gdx.graphics.g3d.attributes.ColorAttribute;
 import com.badlogic.gdx.graphics.g3d.environment.DirectionalLight;
 import com.badlogic.gdx.math.Vector3;
-import com.badlogic.gdx.assets.AssetManager; 
-import com.badlogic.gdx.graphics.g3d.Model; 
-import com.badlogic.gdx.graphics.g3d.ModelInstance; 
-import com.badlogic.gdx.graphics.g3d.loader.GltfAssetLoader; // HATA VEREN SINIF
-import com.badlogic.gdx.assets.loaders.resolvers.InternalFileHandleResolver; 
+import com.badlogic.gdx.assets.AssetManager;
+import com.badlogic.gdx.graphics.g3d.Model;
+import com.badlogic.gdx.graphics.g3d.ModelInstance;
 import java.util.HashMap;
 
 public class SevgiliOyunu extends ApplicationAdapter {
@@ -44,17 +42,13 @@ public class SevgiliOyunu extends ApplicationAdapter {
         kamera.update();
 
         modelBatch = new ModelBatch();
-        environment = createEnvironment(); // Metot çağrısı
+        environment = createEnvironment(); 
 
         // 3. Oyun Bileşenlerini Başlatma - KRİTİK: ASSET YÜKLEMEYİ ZORLAMA
         assets = new AssetManager();
         
-        // KRİTİK EKLENTİ: GLTF ve GLB yükleyicilerini kaydetme (Bağımlılık eklenene kadar hata verecek)
-        GltfAssetLoader gltfLoader = new GltfAssetLoader(new InternalFileHandleResolver());
-        assets.setLoader(Model.class, ".gltf", gltfLoader);
-        assets.setLoader(Model.class, ".glb", gltfLoader);
-        
-        String modelYolu = "kaan.gltf"; 
+        // Model Yolu G3DB olarak değiştirildi ve harici yükleyiciye gerek kalmadı
+        String modelYolu = "kaan.g3db"; 
 
         try {
             assets.load(modelYolu, Model.class);
@@ -77,7 +71,6 @@ public class SevgiliOyunu extends ApplicationAdapter {
         Gdx.app.log("OYUN", "Java/LibGDX 3D Oyun Başlatıldı.");
     }                                                           
     
-    // YENİDEN EKLENEN KRİTİK METOT TANIMI
     private Environment createEnvironment() {                   
         Environment env = new Environment();
         env.set(new ColorAttribute(ColorAttribute.AmbientLight, 0.5f, 0.5f, 0.5f, 1f));
@@ -90,7 +83,7 @@ public class SevgiliOyunu extends ApplicationAdapter {
         // Çizim
         kamera.update(); 
         Gdx.gl.glClearColor(0.2f, 0.2f, 0.2f, 1f); 
-        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BUFFER_BIT);
+        Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT | GL20.GL_DEPTH_BIT);
 
         // 3D Modelleme
         modelBatch.begin(kamera);

@@ -8,10 +8,7 @@ dependencies {
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
     
-    // Versiyonları tekrar $gdxVersion'a getiriyoruz
-    implementation "com.badlogicgames.gdx:gdx-gltf:$gdxVersion"
-    implementation "com.badlogicgames.gdx:gdx-gltf-platform:$gdxVersion:natives-armeabi-v7a"
-    implementation "com.badlogicgames.gdx:gdx-gltf-platform:$gdxVersion:natives-arm64-v8a"
+    # gdx-gltf bağımlılıkları kaldırıldı
 }
 
 android {

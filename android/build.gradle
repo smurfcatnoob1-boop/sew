@@ -4,16 +4,22 @@ apply plugin: 'kotlin-android'
 dependencies {
     implementation project(":core")
     implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
+    
+    // Gerekli LibGDX native kütüphaneleri
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
-    // Diğer LibGDX uzantıları buraya eklenecek
+    
+    // KRİTİK EKLENTİ: GLTF uzantısı Android'e eklendi
+    implementation "com.badlogicgames.gdx:gdx-gltf:$gdxVersion"
+    implementation "com.badlogicgames.gdx:gdx-gltf-platform:$gdxVersion:natives-armeabi-v7a"
+    implementation "com.badlogicgames.gdx:gdx-gltf-platform:$gdxVersion:natives-arm64-v8a"
 }
 
 android {
     namespace 'com.sevgili.oyunu.android'
     // Gradle syntax hatalarını çözen satır
-    compileSdk rootProject.ext.androidCompileSdkVersion 
-    
+    compileSdk rootProject.ext.androidCompileSdkVersion
+
     defaultConfig {
         applicationId rootProject.ext.appName
         minSdk rootProject.ext.androidMinSdkVersion
@@ -26,14 +32,14 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-    
+
     // 1. KURAL: Manuel eklenen dosyaların yolunu gösterir
     sourceSets {
         main {
             jniLibs.srcDirs = ["libs"]
         }
     }
-    
+
     // 2. NİHAİ ÇÖZÜM: libgdx.so'nun APK'dan çıkarılmasını engeller ve doğru paketlenmesini sağlar.
     packagingOptions {
         // Bu, LibGDX'in native dosya çıkarma hatasını kesin olarak çözer.

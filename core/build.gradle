@@ -2,5 +2,5 @@ apply plugin: "java-library"
 
 dependencies {
     api "com.badlogicgames.gdx:gdx:$gdxVersion"
-    api "com.badlogicgames.gdx:gdx-gltf:$gdxVersion"  # KRİTİK EKLENTİ
+    api "com.badlogicgames.gdx:gdx-gltf:$gdxVersion"
 }

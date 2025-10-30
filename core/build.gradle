@@ -2,6 +2,5 @@ apply plugin: "java-library"
 
 dependencies {
     api "com.badlogicgames.gdx:gdx:$gdxVersion"
-    // KRİTİK DEĞİŞİKLİK: Versiyonu kasten düşürüyoruz
-    api "com.badlogicgames.gdx:gdx-gltf:1.12.0" 
+    api "com.badlogicgames.gdx:gdx-gltf:$gdxVersion"  
 }

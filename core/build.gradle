@@ -2,5 +2,5 @@ apply plugin: "java-library"
 
 dependencies {
     api "com.badlogicgames.gdx:gdx:$gdxVersion"
-    # gdx-gltf bağımlılığı kaldırıldı
+    
 }

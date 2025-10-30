@@ -5,24 +5,19 @@ dependencies {
     implementation project(":core")
     implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
     
-    // Gerekli LibGDX native kütüphaneleri
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
     implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
     
-    // KRİTİK EKLENTİ: GLTF uzantısı Android'e eklendi
-    implementation "com.badlogicgames.gdx:gdx-gltf:$gdxVersion"
-    implementation "com.badlogicgames.gdx:gdx-gltf-platform:$gdxVersion:natives-armeabi-v7a"
-    implementation "com.badlogicgames.gdx:gdx-gltf-platform:$gdxVersion:natives-arm64-v8a"
+    // KRİTİK DEĞİŞİKLİK: Versiyonu kasten düşürüyoruz
+    implementation "com.badlogicgames.gdx:gdx-gltf:1.12.0"
+    implementation "com.badlogicgames.gdx:gdx-gltf-platform:1.12.0:natives-armeabi-v7a"
+    implementation "com.badlogicgames.gdx:gdx-gltf-platform:1.12.0:natives-arm64-v8a"
 
-    // CI/CD ÖN BELLEĞİNİ ZORLA: Güncel olmayan kütüphaneleri yeniden indirmesini sağlamak için ufak bir Native değişimi yapıyoruz.
-    // Bu, sunucunun eski hatalı önbelleğe güvenmek yerine, her şeyi sıfırdan kontrol etmesini sağlayacak.
-    implementation "com.badlogicgames.gdx:gdx-bullet-platform:$gdxVersion:natives-arm64-v8a"
-    implementation "com.badlogicgames.gdx:gdx-bullet:$gdxVersion"
+    // Geçici CI/CD önbellek kırma bağımlılıkları kaldırıldı.
 }
 
 android {
     namespace 'com.sevgili.oyunu.android'
-    // Gradle syntax hatalarını çözen satır
     compileSdk rootProject.ext.androidCompileSdkVersion
 
     defaultConfig {

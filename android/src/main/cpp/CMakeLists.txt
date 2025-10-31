@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.18)
 
+# Native Activity için gerekli header dosyasının yolunu ekler
+include_directories(${ANDROID_NDK}/sources/android/native_app_glue)
+
 # NDK Native Glue (Android NativeActivity bağlayıcısı)
 add_library(
     app_glue

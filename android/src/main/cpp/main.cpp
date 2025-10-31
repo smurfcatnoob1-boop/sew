@@ -1,5 +1,7 @@
 #include <android/native_activity.h>
+extern "C" {
 #include <android_native_app_glue.h>
+}
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_android.h>
 #include <android/log.h>

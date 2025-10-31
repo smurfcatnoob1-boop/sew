@@ -1,25 +1,22 @@
 apply plugin: 'com.android.application'
-apply plugin: 'kotlin-android'
-
-dependencies {
-    implementation project(":core")
-    
-    implementation "com.github.Gorn-Gfx:gdx-vulkan-backend-android:$vulkanVersion"
-    
-    implementation "com.github.Gorn-Gfx:gdx-vulkan-platform:$vulkanVersion:natives-armeabi-v7a"
-    implementation "com.github.Gorn-Gfx:gdx-vulkan-platform:$vulkanVersion:natives-arm64-v8a"
-}
 
 android {
     namespace 'com.sevgili.oyunu.android'
-    compileSdk rootProject.ext.androidCompileSdkVersion
+    compileSdk 35
 
     defaultConfig {
         applicationId rootProject.ext.appName
-        minSdk rootProject.ext.androidMinSdkVersion
-        targetSdk rootProject.ext.androidTargetSdkVersion
+        minSdk 29 // Vulkan 1.1 desteği için en az API 29 (Android 10) gerekli
+        targetSdk 35
         versionCode 1
         versionName "1.0"
+        
+        // C++ Native kodlarını kullanmak için NDK ve CMake ayarları
+        externalNativeBuild {
+            cmake {
+                cppFlags ''
+            }
+        }
     }
 
     compileOptions {
@@ -29,13 +26,14 @@ android {
 
     sourceSets {
         main {
-            jniLibs.srcDirs = ["libs"]
+            // Java/Kotlin yerine NativeActivity kullanacağız
         }
     }
-
-    packagingOptions {
-        doNotStrip '**/libgdx.so'
-        pickFirst 'lib/armeabi-v7a/libgdx.so'
-        pickFirst 'lib/arm64-v8a/libgdx.so'
+    
+    // C++ ile NDK'yı bağlama
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+        }
     }
 }

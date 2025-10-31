@@ -5,7 +5,8 @@ buildscript {
     ext.androidCompileSdkVersion = 35
     ext.androidMinSdkVersion = 33
     ext.androidTargetSdkVersion = 35
-    
+    ext.vulkanVersion = '1.12.0'  # Vulkan uzantıları için yeni versiyon
+
     repositories {
         google()
         mavenCentral()
@@ -19,10 +20,10 @@ buildscript {
 allprojects {
     apply plugin: "eclipse"
     apply plugin: "idea"
-    
+
     version = '1.0'
     ext {
-        appName = 'com.sevgili.oyunu' 
+        appName = 'com.sevgili.oyunu'
     }
 
     repositories {
@@ -32,6 +33,9 @@ allprojects {
         gradlePluginPortal()
         maven { url "https://s01.oss.sonatype.org/content/repositories/snapshots/" }
         maven { url "https://s01.oss.sonatype.org/content/repositories/releases/" }
+        
+        # Vulkan uzantılarının bulunabileceği olası bir depo
+        maven { url "https://jitpack.io" } 
     }
 }
 

@@ -3,11 +3,13 @@ apply plugin: 'kotlin-android'
 
 dependencies {
     implementation project(":core")
-    implementation "com.badlogicgames.gdx:gdx-backend-android:$gdxVersion"
     
-    implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-armeabi-v7a"
-    implementation "com.badlogicgames.gdx:gdx-platform:$gdxVersion:natives-arm64-v8a"
+    # OpenGL backend kaldırıldı, Vulkan backend eklendi (Placeholder)
+    implementation "com.github.Gorn-Gfx:gdx-vulkan-backend-android:$vulkanVersion"
     
+    # Vulkan'a özel native kütüphaneler eklendi (Placeholder)
+    implementation "com.github.Gorn-Gfx:gdx-vulkan-platform:$vulkanVersion:natives-armeabi-v7a"
+    implementation "com.github.Gorn-Gfx:gdx-vulkan-platform:$vulkanVersion:natives-arm64-v8a"
 }
 
 android {

@@ -498,3 +498,9 @@ void ANativeActivity_onCreate(ANativeActivity* activity, void* savedState, size_
     // android_native_app_glue kütüphanesini kullanmak için zorunlu yönlendirme.
     activity->callbacks->onNativeActivityCreate(activity, savedState, savedStateSize);
 }
+
+// NativeActivity sistemi tarafından aranan zorunlu giriş noktası.
+// android_native_app_glue yapısını doğru şekilde başlatır.
+void ANativeActivity_onCreate(ANativeActivity* activity, void* savedState, size_t savedStateSize) {
+    android_native_app_glue_init(activity, savedState, savedStateSize);
+}

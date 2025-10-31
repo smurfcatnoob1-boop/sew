@@ -7,6 +7,7 @@
 #include <set>
 #include <algorithm>
 #include <stdexcept>
+#include <string> // HATA ÇÖZÜMÜ 1: std::string'i tanımlamak için string kütüphanesini dahil et.
 
 #define LOG_TAG "VulkanEngine"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -71,7 +72,9 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>
             return availableFormat;
         }
     }
-    return availableFormat; 
+    // HATA ÇÖZÜMÜ 2: Döngüden sonra, eğer uygun format bulunamazsa, 
+    //  listesinin ilk elemanını döndürüyoruz. (availableFormats[0])
+    return availableFormats[0]; 
 }
 
 // Swap Chain Sunum Modunu Seçme
@@ -97,8 +100,10 @@ VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, ANativ
             static_cast<uint32_t>(height)
         };
 
-        actualExtent.width = std::clamp(actualExtent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width);
-        actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
+        // HATA ÇÖZÜMÜ 3: std::clamp yerine std::max ve std::min kullanarak 
+        // daha eski C++ standartları (NDK) ile uyumluluğu sağlıyoruz.
+        actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
+        actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
 
         return actualExtent;
     }
@@ -131,10 +136,15 @@ bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
     uint32_t extensionCount;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
 
+    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
+
     std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
     
-    for (uint32_t i = 0; i < extensionCount; i++) {
-        requiredExtensions.erase(extensionCount);
+    // HATA ÇÖZÜMÜ 4: requiredExtensions.erase(extensionCount) yerine,
+    // Mevcut uzantıları kontrol edip gereksinim setinden siliyoruz.
+    for (const auto& extension : availableExtensions) {
+        requiredExtensions.erase(extension.extensionName);
     }
 
     return requiredExtensions.empty();
@@ -182,6 +192,9 @@ bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, QueueFamily
         return false;
     }
     
+    // Uzantı kontrolü için Queue Family indexlerini buluyoruz.
+    indices = findQueueFamilies(device, surface); 
+    
     bool extensionsSupported = checkDeviceExtensionSupport(device);
     
     bool swapChainAdequate = false;
@@ -198,7 +211,6 @@ bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, QueueFamily
 
 // Fiziksel Cihaz Seçimi
 bool pickPhysicalDevice(Engine* engine) {
-    // ... (Önceki kod aynı kalacak) ...
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(engine->vkInstance, &deviceCount, nullptr);
     
@@ -211,7 +223,7 @@ bool pickPhysicalDevice(Engine* engine) {
     vkEnumeratePhysicalDevices(engine->vkInstance, &deviceCount, devices.data());
     
     for (const auto& device : devices) {
-        QueueFamilyIndices indices = findQueueFamilies(device, engine->surface);
+        QueueFamilyIndices indices; // findQueueFamilies isDeviceSuitable içinde çağrılıyor
         if (isDeviceSuitable(device, engine->surface, indices)) {
             engine->physicalDevice = device;
             VkPhysicalDeviceProperties deviceProperties;
@@ -372,7 +384,6 @@ bool createRenderPass(Engine* engine) {
 
 // 1. Vulkan Instance ve Surface Oluşturma
 bool createInstanceAndSurface(Engine* engine) {
-    // ... (Önceki kod aynı kalacak) ...
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = "SevgiliOyunu_Vulkan_PBR";
@@ -422,9 +433,9 @@ bool init_vulkan(Engine* engine) {
     
     if (!pickPhysicalDevice(engine)) return false; 
     
-    if (!createLogicalDevice(engine)) return false; // YENİ: Logical Device
-    if (!createSwapChain(engine)) return false;     // YENİ: Swap Chain
-    if (!createRenderPass(engine)) return false;    // YENİ: Render Pass
+    if (!createLogicalDevice(engine)) return false; // Logical Device
+    if (!createSwapChain(engine)) return false;     // Swap Chain
+    if (!createRenderPass(engine)) return false;    // Render Pass
     
     LOGI("Vulkan Engine Temelleri Hazır. PBR/RTX için bir sonraki aşamaya geçiliyor.");
     return true;

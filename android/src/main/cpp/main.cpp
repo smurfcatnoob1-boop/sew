@@ -1,6 +1,7 @@
 #include <android/native_activity.h>
 #include <android_native_app_glue.h>
 #include <vulkan/vulkan.h>
+#include <vulkan/vulkan_android.h> // KRİTİK: Android Surface uzantılarını ekler
 #include <android/log.h>
 #include <vector>
 
@@ -132,7 +133,7 @@ void engine_handle_cmd(struct android_app* app, int32_t cmd) {
 
 // Ana Android Giriş Noktası
 void android_main(struct android_app* state) {
-    app_dummy();
+    // app_dummy kaldırıldı - uyarıyı dikkate aldık
     struct Engine engine = {0};
     state->userData = &engine;
     engine.app = state;

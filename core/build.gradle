@@ -2,6 +2,5 @@ apply plugin: "java-library"
 
 dependencies {
     api "com.badlogicgames.gdx:gdx:$gdxVersion"
-    # Vulkan Çekirdek API bağımlılığı eklendi (Topluluk uzantısı için placeholder)
     api "com.github.Gorn-Gfx:gdx-vulkan:$vulkanVersion" 
 }

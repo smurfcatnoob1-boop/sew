@@ -5,7 +5,7 @@ buildscript {
     ext.androidCompileSdkVersion = 35
     ext.androidMinSdkVersion = 33
     ext.androidTargetSdkVersion = 35
-    ext.vulkanVersion = '1.12.0'  # Vulkan uzantıları için yeni versiyon
+    ext.vulkanVersion = '1.12.0' # Yorum satırı kaldırıldı
 
     repositories {
         google()
@@ -34,7 +34,6 @@ allprojects {
         maven { url "https://s01.oss.sonatype.org/content/repositories/snapshots/" }
         maven { url "https://s01.oss.sonatype.org/content/repositories/releases/" }
         
-        # Vulkan uzantılarının bulunabileceği olası bir depo
         maven { url "https://jitpack.io" } 
     }
 }

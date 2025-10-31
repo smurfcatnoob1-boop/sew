@@ -491,3 +491,10 @@ void android_main(struct android_app* state) {
         }
     }
 }
+
+// NativeActivity sistemi tarafından aranan zorunlu giriş noktası
+// Bu fonksiyon, bizim gerçek giriş noktamız olan android_main'i çağırır.
+void ANativeActivity_onCreate(ANativeActivity* activity, void* savedState, size_t savedStateSize) {
+    // android_native_app_glue kütüphanesini kullanmak için zorunlu yönlendirme.
+    activity->callbacks->onNativeActivityCreate(activity, savedState, savedStateSize);
+}

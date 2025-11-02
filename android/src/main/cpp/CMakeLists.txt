@@ -2,7 +2,6 @@
 cmake_minimum_required(VERSION 3.22.1)
 
 # NDK/CMake C_ARCHIVE hatasını düzeltmek için zorunlu C derleyici ayarları:
-# Bu, önceki derleme sorununu çözen kısımdır.
 set(CMAKE_C_COMPILER_WORKS TRUE)
 set(CMAKE_C_LINK_EXECUTABLE "<CMAKE_CXX_COMPILER> <FLAGS> <LINK_FLAGS> <OBJECTS> <LIBRARIES> -o <TARGET> <LINKER_FLAGS>")
 
@@ -19,17 +18,18 @@ find_library(GLESv2_lib GLESv2)
 find_library(Vulkan_lib Vulkan)
 
 # Paylaşımlı kütüphaneyi oluşturma
-# HATA DÜZELTME 1: main.cpp artık sadece "main.cpp" olarak referans veriliyor,
-# çünkü CMakeLists.txt ile aynı dizinde bulunuyor.
 add_library(vulkan-engine SHARED
     main.cpp
 )
 
+# HATA DÜZELTME: 'android_native_app_glue.h' dosyasını bulmak için include yolunu ekle
+target_include_directories(vulkan-engine PUBLIC
+    /sources/android/native_app_glue
+)
+
 # Gerekli kütüphaneleri bağlama
-# HATA DÜZELTME 2: android_native_app_glue.c dosyasını manuel olarak eklemek yerine,
-# NDK'nın sağladığı kararlı android_native_app_glue hedefini kullanıyoruz.
 target_link_libraries(vulkan-engine
-    android_native_app_glue # NDK Native App Glue
+    android_native_app_glue
     lib
     lib
     

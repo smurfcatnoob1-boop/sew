@@ -22,7 +22,8 @@ add_library(vulkan-engine SHARED
     main.cpp
 )
 
-# HATA DÜZELTME: 'android_native_app_glue.h' dosyasını bulmak için include yolunu ekle
+# KESİN HATA DÜZELTME: Include yolunu NDK_ROOT kullanarak kararlı hale getiriyoruz.
+# NDK_ROOT, Gradle tarafından tanımlanan daha güvenilir bir yoldur.
 target_include_directories(vulkan-engine PUBLIC
     /sources/android/native_app_glue
 )

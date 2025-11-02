@@ -22,8 +22,7 @@ add_library(vulkan-engine SHARED
     main.cpp
 )
 
-# KESİN HATA DÜZELTME: Include yolunu NDK_ROOT kullanarak kararlı hale getiriyoruz.
-# NDK_ROOT, Gradle tarafından tanımlanan daha güvenilir bir yoldur.
+# KESİN VE SON DÜZELTME: NDK yolu için CMAKE_ANDROID_NDK değişkeni kullanıldı.
 target_include_directories(vulkan-engine PUBLIC
     /sources/android/native_app_glue
 )

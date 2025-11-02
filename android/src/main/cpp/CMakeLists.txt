@@ -17,19 +17,31 @@ find_library(EGL_lib EGL)
 find_library(GLESv2_lib GLESv2)
 find_library(Vulkan_lib Vulkan)
 
+# NATIVE APP GLUE: Kaynak dosyayı manuel olarak ayrı bir STATIC kütüphane olarak ekle (yol sorununun kesin çözümü)
+add_library(app_glue_src STATIC
+    /sources/android/native_app_glue/android_native_app_glue.c
+)
+# Header dosyasının yolunu app_glue_src target'ına ekle
+target_include_directories(app_glue_src PUBLIC
+    /sources/android/native_app_glue
+)
+# C kaynak dosyası için derleme bayrağını zorunlu olarak C olarak ayarla
+set_target_properties(app_glue_src PROPERTIES COMPILE_FLAGS -xc)
+
+
 # Paylaşımlı kütüphaneyi oluşturma
 add_library(vulkan-engine SHARED
     main.cpp
 )
 
-# KESİN VE SON DÜZELTME: NDK yolu için CMAKE_ANDROID_NDK değişkeni kullanıldı.
+# Ana kütüphaneye de header yolunu ekle (garanti olsun diye)
 target_include_directories(vulkan-engine PUBLIC
     /sources/android/native_app_glue
 )
 
-# Gerekli kütüphaneleri bağlama
+# Gerekli kütüphaneleri ve app glue'yu bağlama
 target_link_libraries(vulkan-engine
-    android_native_app_glue
+    app_glue_src # Manuel eklenen app glue kaynağını bağlıyoruz
     lib
     lib
     

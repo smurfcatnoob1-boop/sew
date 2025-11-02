@@ -1,0 +1,41 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace 'com.sevgili.oyunu.android'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId rootProject.ext.appName
+        minSdk 29
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+
+        externalNativeBuild {
+            cmake {
+                path file('src/main/cpp/CMakeLists.txt')
+                arguments "-DANDROID_PLATFORM=android-29"
+                version "3.22.1" 
+                cppFlags "-std=c++17" 
+            }
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['src/main/jniLibs']
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path file('src/main/cpp/CMakeLists.txt')
+        }
+    }
+}
+

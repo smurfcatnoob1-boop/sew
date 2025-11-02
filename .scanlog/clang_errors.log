@@ -1,0 +1,4 @@
+android/src/main/cpp/main.cpp:3:10: fatal error: 'android_native_app_glue.h' file not found
+    3 | #include <android_native_app_glue.h>
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+1 error generated.

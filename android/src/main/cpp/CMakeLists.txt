@@ -1,38 +1,38 @@
-cmake_minimum_required(VERSION 3.10.2)
+# En azından NDK 25+ ile uyumlu bir CMake versiyonu.
+cmake_minimum_required(VERSION 3.22.1)
 
-# Hata 1 Çözümü: project() komutu eklendi
-project(sevgili_oyunu) 
+# Projenizin adını belirtin
+project(vulkan-engine CXX)
 
-# ndk_includes klasörünü dahil etme yolu olarak ayarlar
-set(NDK_CUSTOM_INCLUDES "${CMAKE_SOURCE_DIR}/ndk_includes")
+# Kütüphane kaynak dosyasını tanımlayın. (main.cpp'yi derlenecek hedef olarak ekler.)
+add_library(vulkan-engine SHARED
+    main.cpp
+)
 
-# android_native_app_glue.h dosyasını artık direk NDK'da aramıyoruz.
-# Bunun yerine, NDK içindeki libandroid_native_app_glue.a kütüphanesini buluyoruz.
-# Bu kütüphaneyi NDK'nın kendisi bulsun diye path vermiyoruz.
+# ----------------------------------------------------
+# KRİTİK ADIM: android_native_app_glue kütüphanesini bulma ve bağlama
+# ----------------------------------------------------
+
+# android_native_app_glue kütüphanesini NDK içinde bulur
 find_library(
-        ANDROID_NATIVE_APP_GLUE_LIBRARY
-        android_native_app_glue)
+    NATIVE_APP_GLUE_LIB
+    android_native_app_glue
+)
 
-find_library(
-        VULKAN_LIBRARY
-        vulkan)
-
-add_library(sevgili_oyunu_native SHARED
-            main.cpp)
-
-# NDK_CUSTOM_INCLUDES yolunu target_include_directories'e ekleyerek 
-# oradaki android_native_app_glue.h dosyasının kullanılmasını sağlıyoruz.
-target_include_directories(sevgili_oyunu_native PUBLIC
-                           ${NDK_CUSTOM_INCLUDES}
-                           ${CMAKE_CURRENT_SOURCE_DIR}
-                           ${VULKAN_INCLUDE_DIR})
-
-# ANDROID_NATIVE_APP_GLUE_LIBRARY değişkeni artık boş olmadığı için hata çözülüyor.
-target_link_libraries(sevgili_oyunu_native
-                      ${ANDROID_NATIVE_APP_GLUE_LIBRARY}
-                      android
-                      log
-                      EGL
-                      GLESv2
-                      ${VULKAN_LIBRARY}
-                      m)
+# Kütüphanenin içeriğinin tamamen bağlanması için zorunlu bayraklar kullanılır.
+target_link_libraries(vulkan-engine
+    # 1. Kendi yerel kütüphaneniz
+    ${NATIVE_APP_GLUE_LIB}
+    
+    # 2. Zorunlu linkleme bayrakları
+    -Wl,--whole-archive
+    ${NATIVE_APP_GLUE_LIB}
+    -Wl,--no-whole-archive
+    
+    # 3. Diğer gerekli NDK ve Vulkan kütüphaneleri
+    android  # Android sistem işlevleri için gereklidir (ör. logcat, native_activity)
+    log      # Loglama (print) işlevleri için gereklidir (__android_log_print)
+    
+    # Sadece Vulkan kaldı!
+    vulkan 
+)

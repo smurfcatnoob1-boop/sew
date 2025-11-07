@@ -29,9 +29,8 @@ android {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
             
-            // HATA DÜZELTİLDİ: 'arguments' kaldırıldı. Bunun yerine bayrakları kullanacağız.
-            cFlags '-DANDROID_TOOLCHAIN=clang' // Bu argümanlar CMake'i etkilemez ama syntax hatasını çözer
-            cppFlags '-DANDROID_STL=c++_static'
+            // HATA DÜZELTİLDİ: Tüm uyumsuz argüman ve bayrak tanımlamaları KALDIRILDI.
+            // Sadece yolu bırakıyoruz.
         }
     }
 }

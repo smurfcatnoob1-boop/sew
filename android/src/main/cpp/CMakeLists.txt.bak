@@ -5,7 +5,6 @@ project(vulkan-engine CXX)
 # NDK'nın .c kaynak dosyasını kullanarak kendi app-glue kütüphanemizi oluşturuyoruz
 # Bu, .h yolunu çözmese bile linkleme hatasını kesin çözer.
 add_library(app-glue STATIC
-include_directories(${ANDROID_NDK}/sources/android/native_app_glue)
     ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
 )
 
@@ -16,7 +15,6 @@ add_library(vulkan-engine SHARED
 
 # Bağlama (Linking)
 target_link_libraries(vulkan-engine
-target_link_libraries(native_app android log)
     -Wl,--whole-archive
     app-glue 
     -Wl,--no-whole-archive

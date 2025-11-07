@@ -1,7 +1,5 @@
 #include <android/native_activity.h>
-extern "C" {
-#include <android_native_app_glue.h>
-}
+#include "android/native_app_glue/android_native_app_glue.h" // <<< NDK'nın Standart Include Yolu Kullanıldı
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_android.h>
 #include <android/log.h>
@@ -9,18 +7,15 @@ extern "C" {
 #include <set>
 #include <algorithm>
 #include <stdexcept>
-#include <string> // HATA ÇÖZÜMÜ 1: std::string'i tanımlamak için string kütüphanesini dahil et.
+#include <string>
 
 #define LOG_TAG "VulkanEngine"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-// Kullanılacak Cihaz ve Ray Tracing Uzantıları
+// Kullanılacak Cihaz ve Uzantılar
 const std::vector<const char*> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-    // RTX/PBR için gelecekte eklenecek uzantılar buraya gelecek:
-    // VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-    // VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME
 };
 
 // Vulkan Motoru Durum Yapısı
@@ -34,7 +29,7 @@ struct Engine {
     VkDevice device = VK_NULL_HANDLE;
     VkSurfaceKHR surface = VK_NULL_HANDLE;
 
-    // PBR ve Ray Tracing için kritik: Pipeline ve Swapchain
+    // PBR ve Swapchain
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
     std::vector<VkImage> swapchainImages;
     std::vector<VkImageView> swapchainImageViews;
@@ -73,19 +68,17 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>
             return availableFormat;
         }
     }
-    // HATA ÇÖZÜMÜ 2: Döngüden sonra, eğer uygun format bulunamazsa,
-    // listesinin ilk elemanını döndürüyoruz. (availableFormats[0])
     return availableFormats[0];
 }
 
 // Swap Chain Sunum Modunu Seçme
 VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
     for (const auto& availablePresentMode : availablePresentModes) {
-        if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) { // En düşük gecikme için Mailbox (Üçlü Tamponlama)
+        if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
             return availablePresentMode;
         }
     }
-    return VK_PRESENT_MODE_FIFO_KHR; // V-Sync (Varsayılan)
+    return VK_PRESENT_MODE_FIFO_KHR;
 }
 
 // Swap Chain Kapsamını Seçme (Ekran Çözünürlüğü)
@@ -100,8 +93,7 @@ VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, ANativ
             static_cast<uint32_t>(width),
             static_cast<uint32_t>(height)
         };
-        // HATA ÇÖZÜMÜ 3: std::clamp yerine std::max ve std::min kullanarak
-        // daha eski C++ standartları (NDK) ile uyumluluğu sağlıyoruz.
+        // std::clamp yerine std::max ve std::min kullanarak uyumluluğu sağlıyoruz.
         actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
         actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
 
@@ -141,7 +133,6 @@ bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
 
     std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
 
-    // HATA ÇÖZÜMÜ 4: Mevcut uzantıları kontrol edip gereksinim setinden siliyoruz.
     for (const auto& extension : availableExtensions) {
         requiredExtensions.erase(extension.extensionName);
     }
@@ -179,19 +170,16 @@ QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surfa
     return indices;
 }
 
-// Cihazın Vulkan 1.2 Desteğini Kontrol Eder (RTX için zorunlu)
+// Cihazın Vulkan 1.2 Desteğini Kontrol Eder
 bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, QueueFamilyIndices& indices) {
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(device, &deviceProperties);
 
-    // Vulkan 1.2 kontrolü
     if (deviceProperties.apiVersion < VK_API_VERSION_1_2) {
         return false;
     }
 
-    // Uzantı kontrolü için Queue Family indexlerini buluyoruz.
     indices = findQueueFamilies(device, surface);
-
     bool extensionsSupported = checkDeviceExtensionSupport(device);
 
     bool swapChainAdequate = false;
@@ -200,7 +188,6 @@ bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, QueueFamily
         swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
     }
 
-    // Vulkan 1.2, Gerekli uzantılar (Swapchain) ve uygun queue family'ler.
     return extensionsSupported && swapChainAdequate && indices.isComplete();
 }
 
@@ -220,7 +207,7 @@ bool pickPhysicalDevice(Engine* engine) {
     vkEnumeratePhysicalDevices(engine->vkInstance, &deviceCount, devices.data());
 
     for (const auto& device : devices) {
-        QueueFamilyIndices indices; // findQueueFamilies isDeviceSuitable içinde çağrılıyor
+        QueueFamilyIndices indices;
         if (isDeviceSuitable(device, engine->surface, indices)) {
             engine->physicalDevice = device;
             VkPhysicalDeviceProperties deviceProperties;
@@ -238,7 +225,7 @@ bool pickPhysicalDevice(Engine* engine) {
     return false;
 }
 
-// Logical Device Oluşturma (GPU'ya emir göndermek için)
+// Logical Device Oluşturma
 bool createLogicalDevice(Engine* engine) {
     QueueFamilyIndices indices = findQueueFamilies(engine->physicalDevice, engine->surface);
 
@@ -256,15 +243,12 @@ bool createLogicalDevice(Engine* engine) {
     }
 
     VkPhysicalDeviceFeatures deviceFeatures{};
-    // Burada Ray Tracing ve PBR için gerekli fiziksel özellikleri etkinleştirebiliriz.
 
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
     createInfo.pEnabledFeatures = &deviceFeatures;
-
-    // Cihaz uzantılarını etkinleştirme (Swapchain zorunlu)
     createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
     createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
@@ -273,7 +257,6 @@ bool createLogicalDevice(Engine* engine) {
         return false;
     }
 
-    // Queue (Sıra) tutacak değişkenleri tanımlama
     vkGetDeviceQueue(engine->device, indices.graphicsFamily, 0, &engine->graphicsQueue);
     vkGetDeviceQueue(engine->device, indices.presentFamily, 0, &engine->presentQueue);
 
@@ -281,7 +264,7 @@ bool createLogicalDevice(Engine* engine) {
     return true;
 }
 
-// Swap Chain Oluşturma (Görüntüyü Ekrana Taşıyan Mekanizma)
+// Swap Chain Oluşturma
 bool createSwapChain(Engine* engine) {
     SwapChainSupportDetails swapChainSupport = querySwapChainSupport(engine->physicalDevice, engine->surface);
 
@@ -304,12 +287,11 @@ bool createSwapChain(Engine* engine) {
     createInfo.imageArrayLayers = 1;
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-    // Queue Ailesi Paylaşım Modu
     QueueFamilyIndices indices = findQueueFamilies(engine->physicalDevice, engine->surface);
     uint32_t queueFamilyIndices[] = {(uint32_t)indices.graphicsFamily, (uint32_t)indices.presentFamily};
 
     if (indices.graphicsFamily != indices.presentFamily) {
-        createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT; // Aynı anda birden fazla sıra ailesi
+        createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
         createInfo.queueFamilyIndexCount = 2;
         createInfo.pQueueFamilyIndices = queueFamilyIndices;
     } else {
@@ -320,14 +302,13 @@ bool createSwapChain(Engine* engine) {
     createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     createInfo.presentMode = presentMode;
     createInfo.clipped = VK_TRUE;
-    createInfo.oldSwapchain = VK_NULL_HANDLE; // Yeniden oluşturma için kullanılacak
+    createInfo.oldSwapchain = VK_NULL_HANDLE;
 
     if (vkCreateSwapchainKHR(engine->device, &createInfo, nullptr, &engine->swapchain) != VK_SUCCESS) {
         LOGE("Swap Chain oluşturulamadı!");
         return false;
     }
 
-    // Swap Chain Görüntülerini ve View'lerini Alma
     vkGetSwapchainImagesKHR(engine->device, engine->swapchain, &imageCount, nullptr);
     engine->swapchainImages.resize(imageCount);
     vkGetSwapchainImagesKHR(engine->device, engine->swapchain, &imageCount, engine->swapchainImages.data());
@@ -339,30 +320,27 @@ bool createSwapChain(Engine* engine) {
     return true;
 }
 
-// Render Pass Oluşturma (Çizim İşleminin İskeleti)
+// Render Pass Oluşturma
 bool createRenderPass(Engine* engine) {
-    // 1. Renk Yüzeyinin Tanımı (PBR Sonucu Buraya Yazılacak)
     VkAttachmentDescription colorAttachment{};
-    colorAttachment.format = engine->swapchainImageFormat; // Swap chain formatıyla aynı
+    colorAttachment.format = engine->swapchainImageFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; // Her frame'i temizle
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; // Sonucu kaydet
+    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR; // Ekrana sunum için hazırla
+    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
     VkAttachmentReference colorAttachmentRef{};
     colorAttachmentRef.attachment = 0;
     colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    // 2. Subpass (Alt Geçiş) Tanımı
     VkSubpassDescription subpass{};
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
 
-    // 3. Render Pass Oluşturma
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
     renderPassInfo.attachmentCount = 1;
@@ -378,7 +356,7 @@ bool createRenderPass(Engine* engine) {
     return true;
 }
 
-// 1. Vulkan Instance ve Surface Oluşturma
+// Vulkan Instance ve Surface Oluşturma
 bool createInstanceAndSurface(Engine* engine) {
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -425,11 +403,10 @@ bool init_vulkan(Engine* engine) {
     }
 
     if (!createInstanceAndSurface(engine)) return false;
-
     if (!pickPhysicalDevice(engine)) return false;
-    if (!createLogicalDevice(engine)) return false; // Logical Device
-    if (!createSwapChain(engine)) return false;     // Swap Chain
-    if (!createRenderPass(engine)) return false;    // Render Pass
+    if (!createLogicalDevice(engine)) return false;
+    if (!createSwapChain(engine)) return false;
+    if (!createRenderPass(engine)) return false;
 
     LOGI("Vulkan Engine Temelleri Hazır. PBR/RTX için bir sonraki aşamaya geçiliyor.");
     return true;
@@ -486,7 +463,6 @@ void android_main(struct android_app* state) {
 }
 
 // Android sisteminin aradığı zorunlu Native Activity başlangıç fonksiyonu.
-// C++ kodundan C kütüphanesi fonksiyonunu çağırmak için extern "C" kullanılır.
 extern "C" {
 void ANativeActivity_onCreate(ANativeActivity* activity, void* savedState, size_t savedStateSize) {
     android_native_app_glue_init(activity, savedState, savedStateSize);

@@ -1,4 +1,4 @@
-android/src/main/cpp/main.cpp:3:10: fatal error: 'android_native_app_glue.h' file not found
-    3 | #include <android_native_app_glue.h>
-      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~
+android/src/main/cpp/main.cpp:2:10: fatal error: 'android/native_app_glue/android_native_app_glue.h' file not found
+    2 | #include "android/native_app_glue/android_native_app_glue.h" // <<< NDK'nın Standart Include Yolu Kullanıldı
+      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 1 error generated.

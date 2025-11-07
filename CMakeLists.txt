@@ -4,27 +4,23 @@ cmake_minimum_required(VERSION 3.10)
 # Proje Adı
 project(vulkan-engine C CXX)
 
-# Kütüphaneleri otomatik bulma denemesi
-find_package(android_native_app_glue)
+# C dilini etkinleştir (native_app_glue bir C dosyasıdır)
+enable_language(C)
 
-# NDK include yollarını otomatik olarak ayarla
-if (android_native_app_glue_FOUND)
-    # Native App Glue kütüphanesi bulunduysa, include yollarını ekle
-    include_directories(${android_native_app_glue_INCLUDE_DIRS})
-else()
-    # Fallback: Kütüphane bulunamazsa NDK içerisindeki standart yolu dene
-    include_directories(${ANDROID_NDK}/sources/android/native_app_glue)
-endif()
-
-# Diğer gerekli include dizinlerini ekle
+# CMake'e NDK include yolunu direkt olarak veriyoruz
+# Bu, <android/native_app_glue/android_native_app_glue.h> yolunu bulmasını sağlayacak
 include_directories(
+    ${ANDROID_NDK}/sources/android/native_app_glue 
     src/main/cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/ndk_includes
 )
+
+# Native App Glue Kaynak Dosyasını Değişken Olarak Tanımlama
+set(NATIVE_APP_GLUE_SRC ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c)
 
 # Kaynak dosyalarını tanımlama
 set(SOURCE_FILES 
     android/src/main/cpp/main.cpp
+    ${NATIVE_APP_GLUE_SRC} # <<< KAYNAK DOSYASINI DİREKT EKLEDİK
 )
 
 # Kütüphaneyi oluşturma
@@ -49,11 +45,7 @@ target_link_libraries(vulkan-engine
     GLESv3
     vulkan
     
-    # Native App Glue Kütüphanesi (Otomatik bulma veya manuel ekleme)
-    native_app_glue
+    # native_app_glue kütüphanesini burada linklemeye gerek yok çünkü kaynağını direkt derledik,
+    # ancak yine de bırakabiliriz, çoğu zaman zarar vermez.
 )
-
-# İsteğe bağlı: JNIEXPORT/JNICALL tanımlarını düzeltmek için
-# set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fno-integrated-as")
-# set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-integrated-as")
 

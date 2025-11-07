@@ -11,10 +11,10 @@ android {
         versionCode 1
         versionName "1.0"
         
-        // KRİTİK: NDK Sürümünü belirtiyoruz
+        // KRITIK: NDK Surumunu belirtiyoruz
         ndk {
-            # NDK'nın hangi API seviyesi için derleme yapacağını belirtir.
-            # native_app_glue kütüphanesi API 9'dan beri vardır, minSdk ile uyumlu olmalıdır.
+            // NDK'nın hangi API seviyesi icin derleme yapacagini belirtir.
+            // native_app_glue kutuphanesi API 9'dan beri vardir, minSdk ile uyumlu olmalidir.
             abiFilters 'armeabi-v7a', 'arm64-v8a' 
         }
     }
@@ -26,16 +26,16 @@ android {
         }
     }
 
-    // CMake/NDK Derlemesini Etkinleştirme
+    // CMake/NDK Derlemesini Etkinlestirme
     externalNativeBuild {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
             
-            // KRİTİK: CMake'e ek argümanlar gönderiyoruz
+            // KRITIK: CMake'e ek argumanlar gonderiyoruz
             defaultArgs [
                 '-DANDROID_TOOLCHAIN=clang',
                 '-DANDROID_STL=c++_static',
-                # NDK kütüphanelerinin aranacağı yolları güçlendiriyoruz
+                // NDK kutuphanelerinin aranacagi yollari guclendiriyoruz
                 '-DANDROID_NATIVE_LIB_DIR=${ANDROID_NDK}/sources/android/native_app_glue'
             ]
         }

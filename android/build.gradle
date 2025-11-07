@@ -10,6 +10,13 @@ android {
         targetSdk 33
         versionCode 1
         versionName "1.0"
+        
+        // KRİTİK: NDK Sürümünü belirtiyoruz
+        ndk {
+            # NDK'nın hangi API seviyesi için derleme yapacağını belirtir.
+            # native_app_glue kütüphanesi API 9'dan beri vardır, minSdk ile uyumlu olmalıdır.
+            abiFilters 'armeabi-v7a', 'arm64-v8a' 
+        }
     }
 
     buildTypes {
@@ -23,6 +30,14 @@ android {
     externalNativeBuild {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
+            
+            // KRİTİK: CMake'e ek argümanlar gönderiyoruz
+            defaultArgs [
+                '-DANDROID_TOOLCHAIN=clang',
+                '-DANDROID_STL=c++_static',
+                # NDK kütüphanelerinin aranacağı yolları güçlendiriyoruz
+                '-DANDROID_NATIVE_LIB_DIR=${ANDROID_NDK}/sources/android/native_app_glue'
+            ]
         }
     }
 }

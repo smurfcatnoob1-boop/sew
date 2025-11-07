@@ -30,9 +30,8 @@ android {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
             
-            // HATA DÜZELTİLDİ: 'defaultArgs' yerine 'arguments' kullanıyoruz
-            arguments '-DANDROID_TOOLCHAIN=clang',
-                      '-DANDROID_STL=c++_static'
+            // HATA DÜZELTİLDİ: Argümanları liste olarak tanımlıyoruz
+            arguments '-DANDROID_TOOLCHAIN=clang', '-DANDROID_STL=c++_static'
         }
     }
 }

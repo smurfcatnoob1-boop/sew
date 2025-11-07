@@ -29,8 +29,10 @@ android {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
             
-            // HATA DÜZELTİLDİ: Tüm uyumsuz argüman ve bayrak tanımlamaları KALDIRILDI.
-            // Sadece yolu bırakıyoruz.
+            // Bayraklar: CMake'e linklenecek kütüphane isimlerini aktarıyoruz
+            arguments '-DANDROID_NATIVE_APP_GLUE_NEEDED=ON'
+            cFlags ''
+            cppFlags ''
         }
     }
 }

@@ -30,8 +30,12 @@ android {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
             
-            // HATA DÜZELTİLDİ: Argümanları liste olarak tanımlıyoruz
-            arguments '-DANDROID_TOOLCHAIN=clang', '-DANDROID_STL=c++_static'
+            // HATA DÜZELTİLDİ: Argümanları tekil 'arg' satırları olarak tanımlıyoruz
+            // Bu, AGP 8.x ve Groovy DSL için en kararlı yoldur.
+            arguments {
+                arg '-DANDROID_TOOLCHAIN=clang'
+                arg '-DANDROID_STL=c++_static'
+            }
         }
     }
 }

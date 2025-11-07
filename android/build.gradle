@@ -29,10 +29,10 @@ android {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
             
-            // Bayraklar: CMake'e linklenecek kütüphane isimlerini aktarıyoruz
-            arguments '-DANDROID_NATIVE_APP_GLUE_NEEDED=ON'
-            cFlags ''
-            cppFlags ''
+            // HATA DÜZELTİLDİ: Tekil argüman tanımlamasını deniyoruz
+            arguments(
+                arg: '-DANDROID_NATIVE_APP_GLUE_NEEDED=ON' 
+            )
         }
     }
 }

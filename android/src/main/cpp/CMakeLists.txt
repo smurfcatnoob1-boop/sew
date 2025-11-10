@@ -2,11 +2,12 @@ cmake_minimum_required(VERSION 3.22.1)
 
 project(vulkan-engine CXX)
 
-# NDK'nın .c kaynak dosyasını kullanarak kendi app-glue kütüphanemizi oluşturuyoruz
-# Bu, .h yolunu çözmese bile linkleme hatasını kesin çözer.
+# KRİTİK DÜZELTME 1: include_directories'i ayrı bir komut olarak add_library'nin dışına alıyoruz.
+include_directories(/sources/android/native_app_glue)
+
+# Düzeltilmiş add_library komutu. Sadece kaynak dosya listeleniyor.
 add_library(app-glue STATIC
-include_directories(${ANDROID_NDK}/sources/android/native_app_glue)
-    ${ANDROID_NDK}/sources/android/native_app_glue/android_native_app_glue.c
+    /sources/android/native_app_glue/android_native_app_glue.c
 )
 
 # Ana kütüphaneyi tanımlama
@@ -14,15 +15,20 @@ add_library(vulkan-engine SHARED
     main.cpp
 )
 
-# Bağlama (Linking)
+# Kütüphane Yolları: app-glue'nun header dosyalarını bulması için ana kütüphaneye yolu ekliyoruz
+target_include_directories(vulkan-engine PRIVATE
+    /sources/android/native_app_glue
+)
+
+# Bağlama (Linking) - KRİTİK DÜZELTME 3: Tek bir komut ve doğru format
 target_link_libraries(vulkan-engine
-target_link_libraries(native_app android log)
+    app-glue
     -Wl,--whole-archive
-    app-glue 
     -Wl,--no-whole-archive
     
-    # Gerekli NDK ve Vulkan kütüphaneleri
     android
     log
+    EGL
+    GLESv3
     vulkan 
 )

@@ -28,11 +28,7 @@ android {
     externalNativeBuild {
         cmake {
             path "src/main/cpp/CMakeLists.txt"
-            
-            // HATA DÜZELTİLDİ: Tekil argüman tanımlamasını deniyoruz
-            arguments(
-                arg: '-DANDROID_NATIVE_APP_GLUE_NEEDED=ON' 
-            )
+            // Tüm syntax sorunu çıkaran argümanlar kaldırıldı.
         }
     }
 }

@@ -10,6 +10,12 @@ add_library(vulkan-engine
     android/src/main/cpp/main.cpp
 )
 
+# KRİTİK: Header Dosyası Yolunu Zorla Tanımlama
+# ANDROID_NDK değişkeni, Gradle tarafından CMake'e her zaman iletilir.
+target_include_directories(vulkan-engine PRIVATE
+    ${ANDROID_NDK}/sources/android/native_app_glue 
+)
+
 # Derleme bayrakları
 target_compile_options(vulkan-engine PRIVATE 
     -std=c++17 
@@ -17,26 +23,14 @@ target_compile_options(vulkan-engine PRIVATE
     -Wextra
 )
 
-# KRİTİK: NDK Modüllerini İçeri Aktarma (Gradle/AGP'nin işini yapmasını sağlar)
-find_package(AndroidNdkModules)
-android_ndk_import_module_native_app_glue()
-
-
-# Gerekli kütüphaneleri bağlama (Linking)
+# NDK Modüllerini Bağlama
+# Gradle/AGP bu linkleme ismini (android_native_app_glue) otomatik olarak bulur ve çözer.
 target_link_libraries(vulkan-engine
-    # NDK modülünü linkle (Gradle/AGP bu kütüphanenin yolunu otomatik bulur)
     android_native_app_glue
-    
-    # Vulkan için temel kütüphaneler
     android
     log
     EGL
     GLESv3
     vulkan
-)
-
-# KRİTİK: Include yolunu manuel olarak ekle (header bulma sorununu çözer)
-target_include_directories(vulkan-engine PRIVATE
-    ${ANDROID_NDK}/sources/android/native_app_glue 
 )
 

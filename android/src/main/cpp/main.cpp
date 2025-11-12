@@ -463,4 +463,3 @@ void android_main(struct android_app* state) {
 }
 
 // Android sisteminin aradığı zorunlu Native Activity başlangıç fonksiyonu.
-}

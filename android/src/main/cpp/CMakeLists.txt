@@ -6,6 +6,9 @@ project(vulkan-engine C CXX)
 
 # Paylaşımlı kütüphaneyi oluşturma
 add_library(vulkan-engine SHARED
+target_include_directories(vulkan-engine PRIVATE
+    ${ANDROID_NDK}/sources/android/native_app_glue
+)
     main.cpp
 )
 

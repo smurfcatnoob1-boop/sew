@@ -5,16 +5,16 @@ cmake_minimum_required(VERSION 3.10)
 project(vulkan-engine C CXX)
 
 # Kütüphaneyi oluşturma
+# Düzeltme: Dosya yolunu sadece "main.cpp" olarak güncelliyoruz.
 add_library(vulkan-engine
     SHARED
-    android/src/main/cpp/main.cpp
+    main.cpp 
 )
 
 # KRİTİK: Header Dosyası Yollarını Tanımlama
-# NDK'nın standart yolu ve kullanıcı tarafından kaydedilen yolu da ekliyoruz.
 target_include_directories(vulkan-engine PRIVATE
     ${ANDROID_NDK}/sources/android/native_app_glue
-    ../../../ndk_includes/android # Kullanıcının .h dosyasını koyduğu yer (Önemli)
+    ../../../ndk_includes/android 
 )
 
 # Derleme bayrakları
@@ -25,7 +25,6 @@ target_compile_options(vulkan-engine PRIVATE
 )
 
 # NDK Modüllerini Bağlama (app_glue, android, log, vulkan)
-# android_native_app_glue modülünü bağlayarak .c dosyasını otomatik derlemesini sağlıyoruz.
 target_link_libraries(vulkan-engine
     android_native_app_glue
     android

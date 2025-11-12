@@ -9,13 +9,8 @@ add_library(
     main.cpp
 )
 
-# 3. Kütüphaneye NDK'daki gerekli include yollarını ekleyin
-#  yerine  kullanıldı.
-target_include_directories(
-    vulkan-engine
-    PRIVATE
-    ${NDK_ROOT}/sources/android/native_app_glue
-)
+# 3. NDK include yolunu belirten 'target_include_directories' komutu KALDIRILDI.
+# Bağlama (target_link_libraries) ile otomatik bulunması bekleniyor.
 
 # 4. Kütüphaneye bağlantı kurulacak diğer yerel kütüphaneleri ekleyin
 target_link_libraries(

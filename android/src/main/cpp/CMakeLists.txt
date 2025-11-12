@@ -1,28 +1,29 @@
-# CMake Versiyonu
+# 1. Minimum CMake sürümünü belirtin
 cmake_minimum_required(VERSION 3.22.1)
 
-# Proje Adı
-project(vulkan-engine C CXX)
-
-# Paylaşımlı kütüphaneyi oluşturma
-add_library(vulkan-engine SHARED
-target_include_directories(vulkan-engine PRIVATE
-    ${ANDROID_NDK}/sources/android/native_app_glue
-)
+# 2. C++ kütüphanesini tanımlayın ve kaynak dosyalarını ekleyin
+# 'main.cpp' dosyanızın burada listelendiğinden emin olun
+add_library(
+    vulkan-engine
+    SHARED
     main.cpp
 )
 
-# NDK Modüllerini Bağlama (Sadece NDK isimlerini kullan)
-target_link_libraries(vulkan-engine
-    # KRİTİK: Native App Glue'yu NDK tarafından yönetilmeye zorlar
-    android_native_app_glue 
-    
-    # Zorunlu Linkleme Bayrakları (Symbol stripping'i önlemek için)
-    -Wl,--whole-archive
-    -Wl,--no-whole-archive
+# 3. Kütüphaneye NDK'daki gerekli include yollarını ekleyin
+# Bu kural, add_library'den SONRA gelmeli.
+target_include_directories(
+    vulkan-engine
+    PRIVATE
+    /sources/android/native_app_glue
+)
 
-    # Gerekli NDK ve Vulkan kütüphaneleri
+# 4. Kütüphaneye bağlantı kurulacak diğer yerel kütüphaneleri ekleyin
+target_link_libraries(
+    vulkan-engine
     android
+    EGL
+    GLESv3
+    vulkan
     log
-    vulkan 
+    android_native_app_glue # Bu kütüphane bağlama için gereklidir
 )

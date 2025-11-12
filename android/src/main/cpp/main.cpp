@@ -1,5 +1,5 @@
 #include <android/native_activity.h>
-#include "android/native_app_glue/android_native_app_glue.h" // <<< NDK'nın Standart Include Yolu Kullanıldı
+#include "android_native_app_glue.h" // <<< NDK'nın Standart Include Yolu Kullanıldı
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_android.h>
 #include <android/log.h>

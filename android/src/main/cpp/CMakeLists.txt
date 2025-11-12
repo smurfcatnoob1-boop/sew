@@ -1,29 +1,29 @@
 # 1. Minimum CMake sürümünü belirtin
 cmake_minimum_required(VERSION 3.22.1)
 
+# NDK'daki native_app_glue kaynak dosyasının yolunu tanımlıyoruz
+set(NATIVE_APP_GLUE_DIR $ENV{ANDROID_NDK_HOME}/sources/android/native_app_glue)
+set(NATIVE_APP_GLUE_SOURCE ${NATIVE_APP_GLUE_DIR}/android_native_app_glue.c)
+
 # 2. C++ kütüphanesini tanımlayın ve kaynak dosyalarını ekleyin
+# main.cpp ve NDK'nın native_app_glue kaynak dosyasını doğrudan ekliyoruz.
 add_library(
     vulkan-engine
     SHARED
     main.cpp
+    ${NATIVE_APP_GLUE_SOURCE}
 )
 
-# 3. Kütüphaneye NDK'daki gerekli include yollarını ekleyin (Başarıya ulaştı)
+# 3. Kütüphaneye NDK'daki gerekli include yollarını ekleyin
+# Şimdi sadece native_app_glue'nun başlık dosyasının dizinini eklememiz yeterli
 target_include_directories(
     vulkan-engine
     PRIVATE
-    $ENV{ANDROID_NDK_HOME}/sources/android/native_app_glue
+    ${NATIVE_APP_GLUE_DIR}
 )
 
-# 4. Bağlayıcının (Linker) kütüphane dosyalarını arayacağı dizini ekleyin
-# Burası, 'android_native_app_glue' kütüphanesini bulmak için kritik öneme sahiptir.
-target_link_directories(
-    vulkan-engine
-    PRIVATE
-    $ENV{ANDROID_NDK_HOME}/sources/android/native_app_glue
-)
-
-# 5. Kütüphaneye bağlantı kurulacak diğer yerel kütüphaneleri ekleyin
+# 4. Kütüphaneye bağlantı kurulacak diğer yerel kütüphaneleri ekleyin
+# 'android_native_app_glue' kütüphanesi çıkarıldı, çünkü kaynak kodunu ekledik.
 target_link_libraries(
     vulkan-engine
     android
@@ -31,5 +31,4 @@ target_link_libraries(
     GLESv3
     vulkan
     log
-    android_native_app_glue 
 )

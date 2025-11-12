@@ -463,8 +463,4 @@ void android_main(struct android_app* state) {
 }
 
 // Android sisteminin aradığı zorunlu Native Activity başlangıç fonksiyonu.
-extern "C" {
-void ANativeActivity_onCreate(ANativeActivity* activity, void* savedState, size_t savedStateSize) {
-    android_native_app_glue_init(activity, savedState, savedStateSize);
-}
 }

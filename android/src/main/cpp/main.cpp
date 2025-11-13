@@ -332,7 +332,8 @@ bool createRenderPass(Engine* engine) {
     colorAttachment.format = engine->swapchainImageFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachment.storeOp = VK_ATTACHMENT_LOAD_OP_STORE;
+    // DÜZELTME: Yazım hatası düzeltildi.
+    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; 
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -413,19 +414,15 @@ bool init_vulkan(Engine* engine) {
     if (!createLogicalDevice(engine)) return false;
 
     // KRİTİK AYAR: Swap Chain oluşturulmadan önce pencere boyutunu zorla 1x1 yapıyoruz.
-    // Bu, Gralloc hatasını tetikleyen ilk buffer tahsis isteğini atlatabilir.
-    // Hatalı formatın (format 56) kabul görmesi için bu hileyi deniyoruz.
     int32_t set_buffers_result = ANativeWindow_setBuffersGeometry(
         engine->app->window, 
         1,  // width
         1,  // height
-        WINDOW_FORMAT_RGBX_8888 // En yaygın kullanılan OpenGL formatı
+        WINDOW_FORMAT_RGBX_8888 
     );
 
     if (set_buffers_result != 0) {
         LOGE("ANativeWindow_setBuffersGeometry (1x1) başarısız oldu: %d", set_buffers_result);
-        // Bu bir hata olsa bile, yine de Swapchain'i oluşturmayı deneyeceğiz
-        // ancak logda görmemiz önemli.
     } else {
         LOGI("ANativeWindow_setBuffersGeometry (1x1) başarılı.");
     }

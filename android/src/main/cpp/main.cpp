@@ -116,7 +116,7 @@ SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device, VkSurface
 
 // Cihazın Gerekli Uzantıları Destekleyip Desteklemediğini Kontrol Eder
 bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
-    uint32_t extensionCount;
+    uint32_t extensionCount = 0;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
 
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
@@ -164,7 +164,7 @@ QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surfa
 // Cihazın Vulkan 1.1 Desteğini Kontrol Eder
 bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, QueueFamilyIndices& indices) {
     VkPhysicalDeviceProperties deviceProperties;
-    vkGetPhysicalDeviceProperties(device, &deviceProperties);
+    vkGetPhysicalDeviceProperties(device, deviceProperties);
 
     if (deviceProperties.apiVersion < VK_API_VERSION_1_1) {
         return false;
@@ -202,7 +202,7 @@ bool pickPhysicalDevice(Engine* engine) {
         if (isDeviceSuitable(device, engine->surface, indices)) {
             engine->physicalDevice = device;
             VkPhysicalDeviceProperties deviceProperties;
-            vkGetPhysicalDeviceProperties(device, &deviceProperties);
+            vkGetPhysicalDeviceProperties(device, deviceProperties);
             LOGI("Seçilen Fiziksel Cihaz: %s (Vulkan API v%d.%d.%d)",
                  deviceProperties.deviceName,
                  VK_VERSION_MAJOR(deviceProperties.apiVersion),
@@ -266,9 +266,6 @@ bool createSwapChain(Engine* engine) {
     // Maksimum uyumluluk için sadece minimum görüntü sayısını iste.
     uint32_t imageCount = swapChainSupport.capabilities.minImageCount; 
     
-    // Not: imageCount'un en az 2 olması önerilir (triple buffering için 3).
-    // Ancak Gralloc hatasını çözmek için min sayıyı kullanıyoruz.
-
     VkSwapchainCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     createInfo.surface = engine->surface;
@@ -277,7 +274,7 @@ bool createSwapChain(Engine* engine) {
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
     createInfo.imageExtent = extent;
     createInfo.imageArrayLayers = 1;
-    // UYUMSUZLUK DÜZELTMESİ: Transfer bayrağını ekleyerek Adreno/Gralloc uyumluluğunu artırıyoruz.
+    // Adreno/Gralloc uyumluluğu için TRANSFER_DST_BIT eklendi.
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
     QueueFamilyIndices indices = findQueueFamilies(engine->physicalDevice, engine->surface);
@@ -291,7 +288,8 @@ bool createSwapChain(Engine* engine) {
         createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     }
 
-    createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
+    // UYUMSUZLUK DÜZELTMESİ: Dönüşümü cihazdan istemek yerine IDENTITY olarak sabitliyoruz.
+    createInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR; 
     createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     createInfo.presentMode = presentMode;
     createInfo.clipped = VK_TRUE;
@@ -449,7 +447,7 @@ void android_main(struct android_app* state) {
             break;
         }
 
-        if (engine.running) {
+        if (engine->running) {
             // Vulkan Çizim (vkQueueSubmit, vkQueuePresentKHR) buraya gelecek.
         }
     }

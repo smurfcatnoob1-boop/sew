@@ -66,10 +66,9 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>
     return availableFormats[0];
 }
 
-// Swap Chain Sunum Modunu Seçme (Daha Konservatif Revizyon)
+// Swap Chain Sunum Modunu Seçme (Daha Konservatif Revizyon: Sadece FIFO)
 VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
     // Tüm cihazlarda desteklenmesi zorunlu olan ve en güvenilir mod olan FIFO'yu tercih et.
-    // Düşük seviye hataları önlemek için MAILBOX aramasını kaldırıyoruz.
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
@@ -256,7 +255,7 @@ bool createLogicalDevice(Engine* engine) {
     return true;
 }
 
-// Swap Chain Oluşturma (Revize Edilmiş)
+// Swap Chain Oluşturma
 bool createSwapChain(Engine* engine) {
     SwapChainSupportDetails swapChainSupport = querySwapChainSupport(engine->physicalDevice, engine->surface);
 
@@ -264,22 +263,22 @@ bool createSwapChain(Engine* engine) {
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
     VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities, engine->app->window);
 
-    // Swap Chain Image Count: Maksimum uyumluluk için sadece minimum görüntü sayısını iste.
+    // Maksimum uyumluluk için sadece minimum görüntü sayısını iste.
     uint32_t imageCount = swapChainSupport.capabilities.minImageCount; 
     
-    // Güvenlik: minImageCount 0 olamaz, ancak maxImageCount > 0 ise 
-    // talep edilen sayı maxImageCount'u geçmemeli (burada zaten min olduğu için bu kontrol gereksiz).
-    // Ancak boş kalan slotlar yüzünden hata olmaması için fazladan 1 resim isteme kuralını kaldırdık.
+    // Not: imageCount'un en az 2 olması önerilir (triple buffering için 3).
+    // Ancak Gralloc hatasını çözmek için min sayıyı kullanıyoruz.
 
     VkSwapchainCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     createInfo.surface = engine->surface;
-    createInfo.minImageCount = imageCount; // minImageCount'a ayarladık
+    createInfo.minImageCount = imageCount;
     createInfo.imageFormat = surfaceFormat.format;
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
     createInfo.imageExtent = extent;
     createInfo.imageArrayLayers = 1;
-    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    // UYUMSUZLUK DÜZELTMESİ: Transfer bayrağını ekleyerek Adreno/Gralloc uyumluluğunu artırıyoruz.
+    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
     QueueFamilyIndices indices = findQueueFamilies(engine->physicalDevice, engine->surface);
     uint32_t queueFamilyIndices[] = {(uint32_t)indices.graphicsFamily, (uint32_t)indices.presentFamily};
@@ -303,7 +302,6 @@ bool createSwapChain(Engine* engine) {
         return false;
     }
 
-    // Gerçekte kaç görüntü oluşturulduğunu alıyoruz (minImageCount'tan az olmamalı)
     vkGetSwapchainImagesKHR(engine->device, engine->swapchain, &imageCount, nullptr);
     engine->swapchainImages.resize(imageCount);
     vkGetSwapchainImagesKHR(engine->device, engine->swapchain, &imageCount, engine->swapchainImages.data());

@@ -81,7 +81,7 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>
     }
     
     // 3. Eğer yukarıdaki popüler formatların hiçbiri bulunamazsa, 
-    // sistemin sunduğu İLK formatı (muhtemelen format 56) kullanmaya geri dön.
+    // sistemin sunduğu İLK formatı kullanmaya geri dön.
     LOGI("Seçilen SwapChain Formatı: Cihazın İlk Sunduğu Format");
     return availableFormats[0];
 }
@@ -96,29 +96,12 @@ VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& avai
 // KRİTİK DÜZELTME: Hata (4x4) aldığı için boyutu 1x1 olarak zorluyoruz.
 VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, ANativeWindow* window) {
     // Cihazınızın yaşadığı Gralloc (4x4) boyut hatasını atlamak için
-    // boyutu 1x1 olarak zorluyoruz. Bu, sadece Swapchain'i kurmak içindir.
+    // boyutu 1x1 olarak zorluyoruz. 
     VkExtent2D actualExtent = {
         static_cast<uint32_t>(1),
         static_cast<uint32_t>(1)
     };
     LOGI("Swap Chain Kapsamı Zorla 1x1 Yapıldı (Gralloc Hatasını Atlamak İçin).");
-
-    // Normalde burası aşağıdaki gibi olmalıydı:
-    // if (capabilities.currentExtent.width != UINT32_MAX) {
-    //     return capabilities.currentExtent;
-    // } else {
-    //     int32_t width = ANativeWindow_getWidth(window);
-    //     int32_t height = ANativeWindow_getHeight(window);
-    //
-    //     VkExtent2D actualExtent = {
-    //         static_cast<uint32_t>(width),
-    //         static_cast<uint32_t>(height)
-    //     };
-    //     actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
-    //     actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
-    //
-    //     return actualExtent;
-    // }
     return actualExtent;
 }
 
@@ -349,7 +332,7 @@ bool createRenderPass(Engine* engine) {
     colorAttachment.format = engine->swapchainImageFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+    colorAttachment.storeOp = VK_ATTACHMENT_LOAD_OP_STORE;
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
     colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -428,6 +411,26 @@ bool init_vulkan(Engine* engine) {
     if (!createInstanceAndSurface(engine)) return false;
     if (!pickPhysicalDevice(engine)) return false;
     if (!createLogicalDevice(engine)) return false;
+
+    // KRİTİK AYAR: Swap Chain oluşturulmadan önce pencere boyutunu zorla 1x1 yapıyoruz.
+    // Bu, Gralloc hatasını tetikleyen ilk buffer tahsis isteğini atlatabilir.
+    // Hatalı formatın (format 56) kabul görmesi için bu hileyi deniyoruz.
+    int32_t set_buffers_result = ANativeWindow_setBuffersGeometry(
+        engine->app->window, 
+        1,  // width
+        1,  // height
+        WINDOW_FORMAT_RGBX_8888 // En yaygın kullanılan OpenGL formatı
+    );
+
+    if (set_buffers_result != 0) {
+        LOGE("ANativeWindow_setBuffersGeometry (1x1) başarısız oldu: %d", set_buffers_result);
+        // Bu bir hata olsa bile, yine de Swapchain'i oluşturmayı deneyeceğiz
+        // ancak logda görmemiz önemli.
+    } else {
+        LOGI("ANativeWindow_setBuffersGeometry (1x1) başarılı.");
+    }
+
+
     if (!createSwapChain(engine)) return false;
     if (!createRenderPass(engine)) return false;
 

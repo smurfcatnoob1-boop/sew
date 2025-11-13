@@ -643,7 +643,7 @@ void draw_vulkan_frame(Engine* engine) {
     submitInfo.pCommandBuffers = &engine->commandBuffers[imageIndex];
 
     VkSemaphore signalSemaphores[] = {engine->renderFinishedSemaphore};
-    submitInfo.signalSemaphores = 1;
+    submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
     if (vkQueueSubmit(engine->graphicsQueue, 1, &submitInfo, engine->inFlightFence) != VK_SUCCESS) { LOGE("Çizim komutu gönderilemedi!"); }

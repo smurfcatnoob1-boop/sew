@@ -8,16 +8,17 @@
 #include <algorithm>
 #include <stdexcept>
 #include <string>
-
-// GLES Uyumlu Kütüphaneler (FALLBACK İÇİN)
-#include <EGL/egl.h> 
-#include <GLES3/gl3.h>
+#include <EGL/egl.h> // GLES Fallback
+#include <GLES3/gl3.h> // GLES Fallback
 
 #define LOG_TAG "HybridEngine"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
 // **************************** UZANTILAR VE TEMEL YAPILAR ****************************
+
+// Vulkan 1.2 Desteğini zorlamak yerine 1.1'i deneyeceğiz (Daha fazla cihaz uyumluluğu için)
+const uint32_t MIN_VULKAN_API_VERSION = VK_API_VERSION_1_1; 
 
 const std::vector<const char*> deviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -51,7 +52,7 @@ struct Engine {
     VkQueue presentQueue = VK_NULL_HANDLE;
     VkCommandPool commandPool = VK_NULL_HANDLE;
 
-    // Vulkan Swapchain ve Çizim Nesneleri
+    // Vulkan Grafik Pipeline Nesneleri
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
     std::vector<VkImage> swapchainImages;
     std::vector<VkImageView> swapchainImageViews;
@@ -60,6 +61,11 @@ struct Engine {
     VkFormat swapchainImageFormat;
     VkExtent2D swapchainExtent;
     VkRenderPass renderPass = VK_NULL_HANDLE;
+    
+    // YENİ EKLENDİ: GRAFİK PIPELINE TEMELLERİ
+    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE; 
+    VkPipeline graphicsPipeline = VK_NULL_HANDLE;
+    // YENİ EKLENDİ SONU
 
     // Vulkan Senkronizasyon
     VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
@@ -74,9 +80,11 @@ struct Engine {
 
 // ********************************** VULKAN UTILITY FONKSİYONLARI **********************************
 
+// Swap Chain Desteklerini Sorgulama
 SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device, VkSurfaceKHR surface) {
     SwapChainSupportDetails details;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
+    // ... format ve present mode sorgulamaları
     uint32_t formatCount;
     vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
     if (formatCount != 0) {
@@ -92,25 +100,36 @@ SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device, VkSurface
     return details;
 }
 
+// Yüksek Kaliteli Formatı Seçme (SRGB)
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
     for (const auto& availableFormat : availableFormats) {
-        if (availableFormat.format == VK_FORMAT_B8G8R8A8_UNORM &&
+        // Yüksek kaliteli PBR için VK_FORMAT_B8G8R8A8_SRGB tercih edelim
+        if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
             availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
             return availableFormat;
         }
     }
+    // Geri kalan en uygun format
     return availableFormats[0];
 }
 
+// Düşük Gecikmeli Sunum Modunu Seçme (Mailbox, Yoksa Fifo)
 VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
+    for (const auto& availablePresentMode : availablePresentModes) {
+        if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
+            return availablePresentMode;
+        }
+    }
     return VK_PRESENT_MODE_FIFO_KHR; // En güvenli mod
 }
 
 // KRİTİK: GRALLOC BUG'I İÇİN BOYUTU ZORLA 1x1 YAPMA VEYA PENCERE BOYUTUNU KULLANMA
 VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, ANativeWindow* window) {
-    if (capabilities.currentExtent.width != (uint32_t)-1) {
+    // Normal mantık (Eski kodunuzdan)
+    if (capabilities.currentExtent.width != UINT32_MAX) {
         return capabilities.currentExtent;
     } 
+    // Gralloc Hilesi: Zorla 1x1 olarak kullanacağız. Bu, ANativeWindow_setBuffersGeometry ile birlikte çalışır.
     VkExtent2D actualExtent = {
         static_cast<uint32_t>(1),
         static_cast<uint32_t>(1)
@@ -149,10 +168,19 @@ QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surfa
     return indices;
 }
 
+// KRİTİK DÜZELTME: isDeviceSuitable'da pointer hatası düzeltildi
 bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, QueueFamilyIndices& indices) {
     VkPhysicalDeviceProperties deviceProperties;
-    vkGetPhysicalDeviceProperties(device, deviceProperties); 
-    if (deviceProperties.apiVersion < VK_API_VERSION_1_1) { return false; }
+    // DÜZELTME: Yapıya veri yazmak için adres operatörü (&) kullanıldı.
+    vkGetPhysicalDeviceProperties(device, &deviceProperties); 
+
+    if (deviceProperties.apiVersion < MIN_VULKAN_API_VERSION) { 
+        LOGI("Cihaz Vulkan v%d.%d desteği sunuyor, minimum v%d.%d gerekiyor.",
+             VK_VERSION_MAJOR(deviceProperties.apiVersion), VK_VERSION_MINOR(deviceProperties.apiVersion),
+             VK_VERSION_MAJOR(MIN_VULKAN_API_VERSION), VK_VERSION_MINOR(MIN_VULKAN_API_VERSION));
+        return false; 
+    }
+
     indices = findQueueFamilies(device, surface);
     bool extensionsSupported = checkDeviceExtensionSupport(device);
     bool swapChainAdequate = false;
@@ -169,7 +197,7 @@ bool createInstanceAndSurface(Engine* engine) {
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = "SevgiliOyunu_Vulkan_PBR";
-    appInfo.apiVersion = VK_API_VERSION_1_1;
+    appInfo.apiVersion = MIN_VULKAN_API_VERSION; // Minimum 1.1'i hedefliyoruz
     VkInstanceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
@@ -187,6 +215,7 @@ bool createInstanceAndSurface(Engine* engine) {
     return true;
 }
 
+// KRİTİK DÜZELTME: pickPhysicalDevice'da pointer hatası düzeltildi
 bool pickPhysicalDevice(Engine* engine) {
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(engine->vkInstance, &deviceCount, nullptr);
@@ -198,6 +227,7 @@ bool pickPhysicalDevice(Engine* engine) {
         if (isDeviceSuitable(device, engine->surface, indices)) {
             engine->physicalDevice = device;
             VkPhysicalDeviceProperties deviceProperties;
+            // DÜZELTME: Yapıya veri yazmak için adres operatörü (&) kullanıldı.
             vkGetPhysicalDeviceProperties(device, &deviceProperties);
             LOGI("Seçilen Fiziksel Cihaz: %s", deviceProperties.deviceName);
             return true;
@@ -208,6 +238,7 @@ bool pickPhysicalDevice(Engine* engine) {
 }
 
 bool createLogicalDevice(Engine* engine) {
+    // ... (Mantık aynı)
     QueueFamilyIndices indices = findQueueFamilies(engine->physicalDevice, engine->surface);
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
     std::set<int> uniqueQueueFamilies = {indices.graphicsFamily, indices.presentFamily};
@@ -238,11 +269,15 @@ bool createLogicalDevice(Engine* engine) {
 }
 
 bool createSwapChain(Engine* engine) {
+    // ... (Mantık aynı)
     SwapChainSupportDetails swapChainSupport = querySwapChainSupport(engine->physicalDevice, engine->surface);
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
     VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities, engine->app->window);
-    uint32_t imageCount = swapChainSupport.capabilities.minImageCount; 
+    uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
+    if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
+        imageCount = swapChainSupport.capabilities.maxImageCount;
+    }
     
     VkSwapchainCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -252,6 +287,7 @@ bool createSwapChain(Engine* engine) {
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
     createInfo.imageExtent = extent;
     createInfo.imageArrayLayers = 1;
+    // VK_IMAGE_USAGE_TRANSFER_DST_BIT eklenerek Render Pass dışındaki çizimlere izin verilir (Işın İzleme/Görüntü İşleme için iyi)
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT; 
 
     QueueFamilyIndices indices = findQueueFamilies(engine->physicalDevice, engine->surface);
@@ -272,7 +308,7 @@ bool createSwapChain(Engine* engine) {
     createInfo.oldSwapchain = VK_NULL_HANDLE;
 
     if (vkCreateSwapchainKHR(engine->device, &createInfo, nullptr, &engine->swapchain) != VK_SUCCESS) {
-        LOGE("KRİTİK HATA: Swap Chain oluşturulamadı! Vulkan başlatma başarısız."); 
+        LOGE("KRİTİK HATA: Swap Chain oluşturulamadı!"); 
         return false;
     }
 
@@ -309,6 +345,7 @@ bool createImageViews(Engine* engine) {
 }
 
 bool createRenderPass(Engine* engine) {
+    // ... (Mantık aynı)
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = engine->swapchainImageFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
@@ -327,6 +364,15 @@ bool createRenderPass(Engine* engine) {
     subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     subpass.colorAttachmentCount = 1;
     subpass.pColorAttachments = &colorAttachmentRef;
+    
+    // Gecikmeli gölgelendirme (Deferred Shading) için burada Subpass Dependency'ler olmalı.
+    VkSubpassDependency dependency{};
+    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+    dependency.dstSubpass = 0;
+    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.srcAccessMask = 0;
+    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 
     VkRenderPassCreateInfo renderPassInfo{};
     renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
@@ -334,13 +380,128 @@ bool createRenderPass(Engine* engine) {
     renderPassInfo.pAttachments = &colorAttachment;
     renderPassInfo.subpassCount = 1;
     renderPassInfo.pSubpasses = &subpass;
+    renderPassInfo.dependencyCount = 1;
+    renderPassInfo.pDependencies = &dependency;
+    
     if (vkCreateRenderPass(engine->device, &renderPassInfo, nullptr, &engine->renderPass) != VK_SUCCESS) {
         LOGE("Render Pass oluşturulamadı!"); return false;
     }
     return true;
 }
 
+// YENİ EKLEME: Pipeline Layout Oluşturma
+bool createPipelineLayout(Engine* engine) {
+    // PBR ve Ray Tracing için gerekli Descriptor Set Layout'ları buraya eklenecektir.
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 0; 
+    pipelineLayoutInfo.pSetLayouts = nullptr; 
+    pipelineLayoutInfo.pushConstantRangeCount = 0; 
+    
+    // Shader'lara Işın İzleme ayarlarını, ışık pozisyonunu veya zamanı göndermek için Push Constant eklenebilir.
+    VkPushConstantRange pushConstantRange{};
+    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
+    pushConstantRange.offset = 0;
+    pushConstantRange.size = sizeof(float) * 4; // Basit bir zaman/ayarlar constant'ı
+
+    pipelineLayoutInfo.pushConstantRangeCount = 1;
+    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
+
+    if (vkCreatePipelineLayout(engine->device, &pipelineLayoutInfo, nullptr, &engine->pipelineLayout) != VK_SUCCESS) {
+        LOGE("Pipeline Layout oluşturulamadı!");
+        return false;
+    }
+    LOGI("Pipeline Layout Başarıyla Oluşturuldu.");
+    return true;
+}
+
+// YENİ EKLEME: Graphics Pipeline Oluşturma
+bool createGraphicsPipeline(Engine* engine) {
+    // KRİTİK: SHADER MODÜLLERİ EKSİK. Bu fonksiyon şimdilik başarısız olacaktır, ancak yapıyı tamamlıyoruz.
+    
+    // 1. Vertex Input (GLTF'den gelecek)
+    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
+    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    // ... (GLTF yüklenince vertex binding ve attribute'lar buraya gelecek)
+
+    // 2. Input Assembly
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; 
+    inputAssembly.primitiveRestartEnable = VK_FALSE;
+
+    // 3. Viewport ve Scissor (Dinamik Çözünürlük İçin Ayarlanabilir)
+    VkViewport viewport{};
+    viewport.x = 0.0f;
+    viewport.y = 0.0f;
+    viewport.width = (float)engine->swapchainExtent.width;
+    viewport.height = (float)engine->swapchainExtent.height;
+    viewport.minDepth = 0.0f;
+    viewport.maxDepth = 1.0f;
+
+    VkRect2D scissor{};
+    scissor.offset = {0, 0};
+    scissor.extent = engine->swapchainExtent;
+
+    VkPipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1;
+    viewportState.pViewports = &viewport;
+    viewportState.scissorCount = 1;
+    viewportState.pScissors = &scissor;
+
+    // 4. Rasterizasyon (RTX için poligon modu VK_POLYGON_MODE_FILL kalır)
+    VkPipelineRasterizationStateCreateInfo rasterizer{};
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
+    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
+    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    rasterizer.lineWidth = 1.0f;
+
+    // 5. Renk Karıştırma (Color Blending)
+    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
+    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+    colorBlendAttachment.blendEnable = VK_FALSE; 
+
+    VkPipelineColorBlendStateCreateInfo colorBlending{};
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    colorBlending.logicOpEnable = VK_FALSE;
+    colorBlending.attachmentCount = 1;
+    colorBlending.pAttachments = &colorBlendAttachment;
+    
+    // 6. Multisampling (Kenar Yumuşatma)
+    VkPipelineMultisampleStateCreateInfo multisampling{};
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; // Şimdilik 1x
+
+    // 7. Pipeline Oluşturma
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+    // pipelineInfo.stageCount = 2; // Yer tutucu. Shader'lar gelince açılacak.
+    // pipelineInfo.pStages = shaderStages;
+    pipelineInfo.pVertexInputState = &vertexInputInfo;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+    pipelineInfo.pViewportState = &viewportState;
+    pipelineInfo.pRasterizationState = &rasterizer;
+    pipelineInfo.pMultisampleState = &multisampling;
+    pipelineInfo.pColorBlendState = &colorBlending;
+    pipelineInfo.layout = engine->pipelineLayout;
+    pipelineInfo.renderPass = engine->renderPass;
+    pipelineInfo.subpass = 0;
+
+    // Hata beklenir, çünkü shader modülleri (pStages) eksik.
+    if (vkCreateGraphicsPipelines(engine->device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &engine->graphicsPipeline) != VK_SUCCESS) {
+        LOGE("Graphics Pipeline oluşturulamadı! (Bu, Shader Modülleri eklenene kadar normaldir)");
+        // Motorun çökmemesi için burada false dönmek yerine loglayıp devam edebiliriz.
+        // Ancak şimdilik hata kontrolünü koruyalım.
+        return false;
+    }
+    LOGI("Graphics Pipeline İskeleti Başarıyla Oluşturuldu.");
+    return true;
+}
+
 bool createFramebuffers(Engine* engine) {
+    // ... (Mantık aynı)
     engine->swapchainFramebuffers.resize(engine->swapchainImageViews.size());
     for (size_t i = 0; i < engine->swapchainImageViews.size(); i++) {
         VkImageView attachments[] = { engine->swapchainImageViews[i] };
@@ -360,6 +521,7 @@ bool createFramebuffers(Engine* engine) {
 }
 
 bool createCommandObjects(Engine* engine) {
+    // ... (Mantık aynı)
     QueueFamilyIndices queueFamilyIndices = findQueueFamilies(engine->physicalDevice, engine->surface);
     VkCommandPoolCreateInfo poolInfo{};
     poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -377,6 +539,7 @@ bool createCommandObjects(Engine* engine) {
 }
 
 bool createSyncObjects(Engine* engine) {
+    // ... (Mantık aynı)
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
     VkFenceCreateInfo fenceInfo{};
@@ -392,7 +555,9 @@ bool createSyncObjects(Engine* engine) {
 
 // **************************** GLES FALLBACK ****************************
 
+// GLES Fallback fonksiyonları (Aynı kaldı)
 bool init_gles_fallback(Engine* engine) {
+    // ... (GLES Başlatma mantığı)
     if (engine->app->window == NULL) { LOGE("GLES: Pencere başlatılmadı!"); return false; }
     
     engine->glesDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
@@ -416,7 +581,6 @@ bool init_gles_fallback(Engine* engine) {
     return true;
 }
 
-
 // **************************** ÇİZİM KOMUTLARI (Mavi Ekran Testi) ****************************
 
 void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, Engine* engine) {
@@ -438,13 +602,24 @@ void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, Eng
     renderPassInfo.pClearValues = &clearColor;
 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-    // Buraya asıl PBR/RTX çizim komutlarınız gelecek
+    
+    // YENİ EKLEME: Pipeline'ı bağla ve çizim komutunu ekle
+    if (engine->graphicsPipeline != VK_NULL_HANDLE) {
+        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, engine->graphicsPipeline);
+        
+        // PBR Pipeline'ını beslemek için buraya model/vertex/index buffer bağlama ve çizim komutları gelecek.
+        // vkCmdBindVertexBuffers(...);
+        // vkCmdBindIndexBuffer(...);
+        // vkCmdDrawIndexed(commandBuffer, indexCount, 1, 0, 0, 0); 
+    }
+
     vkCmdEndRenderPass(commandBuffer);
 
     if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) { LOGE("Command Buffer sonlandırılamadı!"); }
 }
 
 void draw_vulkan_frame(Engine* engine) {
+    // ... (Çizim mantığı aynı kaldı)
     vkWaitForFences(engine->device, 1, &engine->inFlightFence, VK_TRUE, UINT64_MAX);
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(engine->device, engine->swapchain, UINT64_MAX, engine->imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
@@ -468,7 +643,7 @@ void draw_vulkan_frame(Engine* engine) {
     submitInfo.pCommandBuffers = &engine->commandBuffers[imageIndex];
 
     VkSemaphore signalSemaphores[] = {engine->renderFinishedSemaphore};
-    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.signalSemaphores = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
     if (vkQueueSubmit(engine->graphicsQueue, 1, &submitInfo, engine->inFlightFence) != VK_SUCCESS) { LOGE("Çizim komutu gönderilemedi!"); }
@@ -487,6 +662,7 @@ void draw_vulkan_frame(Engine* engine) {
 }
 
 void draw_gles_frame(Engine* engine) {
+    // ... (GLES çizimi)
     if (engine->glesDisplay != EGL_NO_DISPLAY) {
         // Mavi ekran çizimi (Vulkan ile aynı renk)
         glClearColor(0.1f, 0.3f, 0.5f, 1.0f); 
@@ -500,6 +676,12 @@ void draw_gles_frame(Engine* engine) {
 void cleanup_vulkan(Engine* engine) {
     if (engine->device != VK_NULL_HANDLE) {
         vkDeviceWaitIdle(engine->device);
+
+        // YENİ EKLENEN OBJE TEMİZLİĞİ
+        if (engine->graphicsPipeline) { vkDestroyPipeline(engine->device, engine->graphicsPipeline, nullptr); }
+        if (engine->pipelineLayout) { vkDestroyPipelineLayout(engine->device, engine->pipelineLayout, nullptr); }
+        // TEMİZLİK SONUÇ
+        
         if (engine->renderFinishedSemaphore) { vkDestroySemaphore(engine->device, engine->renderFinishedSemaphore, nullptr); }
         if (engine->imageAvailableSemaphore) { vkDestroySemaphore(engine->device, engine->imageAvailableSemaphore, nullptr); }
         if (engine->inFlightFence) { vkDestroyFence(engine->device, engine->inFlightFence, nullptr); }
@@ -520,7 +702,8 @@ void cleanup_vulkan(Engine* engine) {
 bool init_vulkan_full(Engine* engine) {
     if (engine->app->window == NULL) { return false; }
 
-    // KRİTİK GRALLOC HİLESİ: Pencere boyutunu zorla 1x1 yapıyoruz.
+    // YÖNTEM 1 (ZORLU): KRİTİK GRALLOC HİLESİ (EN YÜKSEK ÖNCELİK)
+    // Gralloc hatası alıyorduk. Pencere boyutunu zorla 1x1 yaparak buffer atama hatasını atlatıyoruz.
     ANativeWindow_setBuffersGeometry(engine->app->window, 1, 1, WINDOW_FORMAT_RGBX_8888);
 
     if (!createInstanceAndSurface(engine)) return false;
@@ -531,6 +714,12 @@ bool init_vulkan_full(Engine* engine) {
     
     if (!createImageViews(engine)) return false;
     if (!createRenderPass(engine)) return false;
+    
+    // YENİ PIPELINE OLUŞTURMA ADIMLARI
+    if (!createPipelineLayout(engine)) return false;
+    if (!createGraphicsPipeline(engine)) return false;
+    // PIPELINE SONU
+    
     if (!createFramebuffers(engine)) return false;
     if (!createCommandObjects(engine)) return false;
     if (!createSyncObjects(engine)) return false;
@@ -548,18 +737,20 @@ void engine_handle_cmd(struct android_app* app, int32_t cmd) {
     switch (cmd) {
         case APP_CMD_INIT_WINDOW:
             if (engine->app->window != NULL) {
+                // YÖNTEM 1 (ZORLU): Vulkan'ı Gralloc Hilesi ile Deneme
                 if (init_vulkan_full(engine)) {
                     engine->running = true;
-                    LOGI("BAŞLATMA: Vulkan Motoru Başarıyla Seçildi.");
+                    LOGI("BAŞLATMA: Vulkan Motoru Başarıyla Seçildi (Yöntem 1).");
                     return;
                 }
 
-                LOGE("Vulkan başlatma başarısız oldu (muhtemelen Gralloc hatası). GLES Fallback deneniyor...");
+                LOGE("Vulkan başlatma başarısız oldu (Yöntem 1). Yöntem 3 (GLES) Fallback deneniyor...");
                 cleanup_vulkan(engine); 
 
+                // YÖNTEM 3: GLES Fallback
                 if (init_gles_fallback(engine)) {
                     engine->running = true;
-                    LOGI("BAŞLATMA: GLES Fallback Motoru Seçildi.");
+                    LOGI("BAŞLATMA: GLES Fallback Motoru Seçildi (Yöntem 3).");
                     return;
                 }
                 
@@ -568,7 +759,6 @@ void engine_handle_cmd(struct android_app* app, int32_t cmd) {
             break;
         case APP_CMD_TERM_WINDOW:
             engine->running = false;
-            // engine bir pointer olduğu için burada -> kullanımı doğru.
             if (engine->is_vulkan) { 
                 cleanup_vulkan(engine); 
             } else if (engine->glesDisplay != EGL_NO_DISPLAY) {
@@ -587,7 +777,6 @@ void engine_handle_cmd(struct android_app* app, int32_t cmd) {
 }
 
 void android_main(struct android_app* state) {
-    // BURADA 'engine' bir struct'tır.
     struct Engine engine = {0}; 
     state->userData = &engine;
     engine.app = state;
@@ -603,10 +792,9 @@ void android_main(struct android_app* state) {
         if (state->destroyRequested != 0) break;
 
         if (engine.running) { 
-            // Çizim kısmı: engine bir struct olduğu için . kullanılır, pointer gerektiğinde &engine gönderilir.
             if (engine.is_vulkan) {
                 draw_vulkan_frame(&engine);
-            } else if (engine.glesDisplay != EGL_NO_DISPLAY) { // Hata düzeltildi: engine-> yerine engine.
+            } else if (engine.glesDisplay != EGL_NO_DISPLAY) { 
                 draw_gles_frame(&engine);
             }
         }

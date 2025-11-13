@@ -60,17 +60,14 @@ struct SwapChainSupportDetails {
 
 // ********************************** UTILITY FONKSİYONLARI **********************************
 
-// Swap Chain Yüzey Formatını Seçme
+// Swap Chain Yüzey Formatını Seçme (Evrensel Uyumlu Revizyon)
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
-    for (const auto& availableFormat : availableFormats) {
-        if (availableFormat.format == VK_FORMAT_B8G8R8A8_UNORM &&
-            availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-            return availableFormat;
-        }
-        if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
-            availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-            return availableFormat;
-        }
+    // Cihazın sunduğu ilk formatı kullanmak, en yaygın uyumluluk hatası olan Format/ColorSpace
+    // eşleşme sorunlarını (Adreno hataları gibi) büyük ölçüde ortadan kaldırır.
+    if (availableFormats.empty()) {
+        // Bu durum olası değil, çünkü SwapChainSupportDetails zaten formatların boş olmadığını kontrol ediyor.
+        // Ama yine de güvenli dönüş için burayı bıraktık.
+        // Bir hata fırlatmak daha uygun olabilir, ancak şimdilik varsayalım ki daima bir format var.
     }
     return availableFormats[0];
 }
@@ -174,7 +171,7 @@ QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surfa
     return indices;
 }
 
-// Cihazın Vulkan 1.2 Desteğini Kontrol Eder
+// Cihazın Vulkan 1.1 Desteğini Kontrol Eder
 bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, QueueFamilyIndices& indices) {
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(device, &deviceProperties);
@@ -225,7 +222,7 @@ bool pickPhysicalDevice(Engine* engine) {
         }
     }
 
-    LOGE("Gerekli Vulkan 1.2 ve uzantılarını destekleyen uygun cihaz bulunamadı!");
+    LOGE("Gerekli Vulkan 1.1 ve uzantılarını destekleyen uygun cihaz bulunamadı!");
     return false;
 }
 

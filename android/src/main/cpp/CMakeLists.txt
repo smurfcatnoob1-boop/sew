@@ -20,6 +20,13 @@ target_include_directories(
     vulkan-engine
     PRIVATE
     ${NATIVE_APP_GLUE_DIR}
+    
+    # --- YENİ EKLENEN KÜTÜPHANELERİN INCLUDE YOLLARI ---
+    # Not: GLM, TinyGLTF ve ImGui'nin başlık (header) dosyalarının bulunduğu dizinler:
+    ${CMAKE_SOURCE_DIR}/libraries/glm       # GLM (Vektör Matematiği)
+    ${CMAKE_SOURCE_DIR}/libraries/tinygltf  # TinyGLTF (Model Yükleme)
+    ${CMAKE_SOURCE_DIR}/libraries/imgui     # Dear ImGui (UI Çizimi)
+    # Firebase C++ SDK'sının include yolu (Eğer gerekliyse buraya eklenecek)
 )
 
 # 4. Kütüphaneye bağlantı kurulacak diğer yerel kütüphaneleri ekleyin
@@ -31,4 +38,19 @@ target_link_libraries(
     GLESv3
     vulkan
     log
+    
+    # --- YENİ EKLENEN KÜTÜPHANELERİN BAĞLANTI LİSTESİ (LINKING) ---
+    
+    # 1. Firebase SDK'ları (Multiplayer ve Chat için Zorunlu)
+    # Bu adların Android NDK'da Firebase kütüphanesine doğru bağlandığından emin olun:
+    firebase_app
+    firebase_firestore
+    firebase_auth
+    
+    # 2. Model ve UI Kütüphaneleri
+    # Eğer bu kütüphaneleri alt dizin (add_subdirectory) olarak eklemediyseniz
+    # ve sadece başlık dosyaları (header-only) kullanıyorsanız bu satırlar gerekmeyebilir.
+    # Kaynak kod dahil ettiyseniz, doğru target adını kullanın. Örnek:
+    # tinygltf
+    # imgui
 )

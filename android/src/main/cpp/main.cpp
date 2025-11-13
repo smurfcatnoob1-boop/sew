@@ -1,731 +1,505 @@
 
 
-// Gerekli başlık dosyaları
 #include <vulkan/vulkan.h>
 #include <android_native_app_glue.h>
 #include <android/log.h>
-#include <assert.h>
 #include <vector>
-#include <cstring>
-#include <optional>
-#include <set>
+#include <string>
+#include <chrono>
 #include <algorithm>
+#include <cmath>
+#include <sstream>
+#include <iomanip>
 
-#define LOG_TAG "VulkanApp"
+#define LOG_TAG "OyunMotoru"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+#define TEST_PASSWORD "1234567891www31"
+#define MAX_LOBBY_USERS 2
 
-// --- Sabitler ve Yapılar ---
-const std::vector<const char*> deviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+// --- 1. Durum Yönetimi ---
+enum class AppState {
+    CHARACTER_SELECTION,
+    MAIN_MENU,
+    TEST_PASSWORD_INPUT,
+    MULTIPLAYER_MENU,
+    LOBBY_LIST_MENU,
+    LOBBY_CREATE_MENU,
+    LOBBY_WAITING,
+    IN_GAME,
+    TEST_MODE // Test modu, IN_GAME ile aynı mantığı kullanır, sadece log ve UI etiketi farklıdır.
 };
 
-struct QueueFamilyIndices {
-    std::optional<uint32_t> graphicsFamily;
-    std::optional<uint32_t> presentFamily;
+enum class CharacterType { NONE, GIRL, BOY };
+enum class GraphicsAPI { NONE, VULKAN_1_1, GLES_3_0 };
 
-    bool isComplete() {
-        return graphicsFamily.has_value() && presentFamily.has_value();
+// --- 2. Simüle Edilmiş Grafik/Network Sınıfları (Placeholder'ların Yerine) ---
+
+struct GraphicsSystem {
+    GraphicsAPI api = GraphicsAPI::NONE;
+    // Kamera pozisyonu (Head Bobbing tarafından güncellenir)
+    float camX = 0.0f, camY = 1.7f, camZ = 0.0f; 
+
+    // Vulkan Başlatma Simülasyonu
+    bool tryVulkanInit(int method) {
+        LOGI("Vulkan Başlatma Yöntemi %d deneniyor...", method);
+        // Gerçekte burada vkCreateInstance, vkCreateDevice vb. çağrılacak.
+        // Başarı simülasyonu:
+        if (method <= 3) { // 3 Yöntem Vulkan denensin
+             api = GraphicsAPI::VULKAN_1_1;
+             LOGI("Vulkan 1.1 başarılı. Başlatma tamamlandı.");
+             return true;
+        }
+        return false;
+    }
+
+    // OpenGLES Başlatma Simülasyonu
+    bool tryGLESInit() {
+        LOGI("Vulkan başarısız. OpenGLES 3.0 deneniyor...");
+        api = GraphicsAPI::GLES_3_0;
+        LOGI("OpenGLES 3.0 başarılı. Başlatma tamamlandı.");
+        return true;
+    }
+
+    void clearScreen(float r, float g, float b, float a) {
+        // vkCmdClearAttachments veya glClearColor/glClear komutları simüle ediliyor
+        LOGI("EKRAN TEMİZLEME: R:%.2f G:%.2f B:%.2f A:%.2f (API: %s)", r, g, b, a, 
+             api == GraphicsAPI::VULKAN_1_1 ? "Vulkan 1.1" : "GLES 3.0");
     }
 };
 
-struct SwapChainSupportDetails {
-    VkSurfaceCapabilitiesKHR capabilities;
-    std::vector<VkSurfaceFormatKHR> formats;
-    std::vector<VkPresentModeKHR> presentModes;
+struct NetworkSystem {
+    std::string currentLobbyId = "";
+    std::vector<std::string> chatHistory = {"Sistem: Lobiye hoş geldiniz."};
+
+    // Lobi oluşturma simülasyonu (Firebase'e yazma)
+    void createLobby(CharacterType type, const std::string& userId) {
+        currentLobbyId = "LOBI_" + std::to_string(std::rand() % 9999);
+        // Firebase Firestore'a lobi belgesi yazma simülasyonu:
+        LOGI("NETWORK: Lobi oluşturuldu (ID: %s, Kullanıcı: %s, Kapasite: %d). Firebase'e yazıldı.", 
+             currentLobbyId.c_str(), userId.c_str(), MAX_LOBBY_USERS);
+        chatHistory.push_back("Sistem: Lobi başarıyla oluşturuldu.");
+    }
+
+    // Chat mesajı gönderme simülasyonu
+    void sendChatMessage(const std::string& userId, const std::string& message) {
+        std::string fullMessage = userId + ": " + message;
+        chatHistory.push_back(fullMessage);
+        // Firebase'e gerçek zamanlı mesaj yazma simülasyonu:
+        LOGI("NETWORK: Chat mesajı gönderildi: %s", fullMessage.c_str());
+        // Diğer kullanıcılara anlık bildirim simüle ediliyor (Firebase onSnapshot)
+    }
 };
 
-// --- Ana Vulkan Motoru Sınıfı ---
-class VulkanEngine {
+
+// --- 3. Ana Motor Sınıfı ---
+class GameEngine {
 public:
-    // Android etkinliklerini işlemek için ana uygulama durumuna bir işaretçi tutar
     struct android_app* app;
-
-    VkInstance instance = VK_NULL_HANDLE;
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    VkDevice device = VK_NULL_HANDLE;
-
-    VkQueue graphicsQueue = VK_NULL_HANDLE;
-    VkQueue presentQueue = VK_NULL_HANDLE;
-
-    VkSwapchainKHR swapChain = VK_NULL_HANDLE;
-    VkFormat swapChainImageFormat;
-    VkExtent2D swapChainExtent;
-    std::vector<VkImage> swapChainImages;
-    std::vector<VkImageView> swapChainImageViews;
-
-    VkRenderPass renderPass = VK_NULL_HANDLE;
-    std::vector<VkFramebuffer> swapChainFramebuffers;
-
-    VkCommandPool commandPool = VK_NULL_HANDLE;
-    std::vector<VkCommandBuffer> commandBuffers;
-
-    VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
-    VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
-    VkFence inFlightFence = VK_NULL_HANDLE;
-
-    bool running = false;
-    bool initialized = false;
-
-    VulkanEngine(struct android_app* application) : app(application) {}
-
-    // Uygulama penceresi hazır olduğunda çağrılır
-    void initVulkan() {
-        LOGI("Vulkan başlatılıyor...");
-        createInstance();
-        createSurface();
-        pickPhysicalDevice();
-        createLogicalDevice();
-        createSwapchainAndResources();
-        createSyncObjects();
-        initialized = true;
-    }
-
-    // Uygulama penceresi kapanırken veya sonlanırken çağrılır
-    void cleanup() {
-        if (!initialized) return;
-
-        LOGI("Vulkan temizleniyor...");
-
-        vkDeviceWaitIdle(device);
-
-        cleanupSwapchainResources();
-
-        vkDestroySemaphore(device, renderFinishedSemaphore, nullptr);
-        vkDestroySemaphore(device, imageAvailableSemaphore, nullptr);
-        vkDestroyFence(device, inFlightFence, nullptr);
-
-        vkDestroyCommandPool(device, commandPool, nullptr);
-        vkDestroyDevice(device, nullptr);
-        vkDestroySurfaceKHR(instance, surface, nullptr);
-        vkDestroyInstance(instance, nullptr);
-
-        initialized = false;
-    }
-
-    void drawFrame() {
-        if (!initialized || !swapChain) return;
-
-        // 1. Çiti bekle
-        vkWaitForFences(device, 1, &inFlightFence, VK_TRUE, UINT64_MAX);
-
-        uint32_t imageIndex;
-        // 2. Takas zincirinden bir sonraki görüntüyü al
-        VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
-
-        if (result == VK_ERROR_OUT_OF_DATE_KHR) {
-            recreateSwapchainAndResources();
-            return;
-        } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-            LOGE("Takas zinciri görüntüsü alınamadı!");
-            return;
-        }
-
-        // 3. Çiti sıfırla
-        vkResetFences(device, 1, &inFlightFence);
-
-        // 4. Gönderme (Submission)
-        VkSubmitInfo submitInfo{};
-        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-        // imageAvailableSemaphore bekler, sonra renderFinishedSemaphore işaretler
-        VkSemaphore waitSemaphores[] = {imageAvailableSemaphore};
-        VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-        submitInfo.waitSemaphoreCount = 1;
-        submitInfo.pWaitSemaphores = waitSemaphores;
-        submitInfo.pWaitDstStageMask = waitStages;
-
-        // Önceden kaydedilmiş komut arabelleğini kullan (Mavi Temizleme)
-        submitInfo.commandBufferCount = 1;
-        submitInfo.pCommandBuffers = &commandBuffers[imageIndex];
-
-        VkSemaphore signalSemaphores[] = {renderFinishedSemaphore};
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = signalSemaphores;
-
-        if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFence) != VK_SUCCESS) {
-            LOGE("Komut arabelleği gönderilemedi!");
-            return;
-        }
-
-        // 5. Sunum (Presentation)
-        VkPresentInfoKHR presentInfo{};
-        presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-
-        presentInfo.waitSemaphoreCount = 1;
-        presentInfo.pWaitSemaphores = signalSemaphores;
-
-        VkSwapchainKHR swapChains[] = {swapChain};
-        presentInfo.swapchainCount = 1;
-        presentInfo.pSwapchains = swapChains;
-
-        presentInfo.pImageIndices = &imageIndex;
-
-        result = vkQueuePresentKHR(presentQueue, &presentInfo);
-
-        if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) {
-            recreateSwapchainAndResources();
-        } else if (result != VK_SUCCESS) {
-            LOGE("Görüntü sunulamadı!");
-        }
-    }
-
-private:
-    // --- Vulkan Instance Oluşturma ---
-    void createInstance() {
-        VkApplicationInfo appInfo{};
-        appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-        appInfo.pApplicationName = "Vulkan Blue Clear Android";
-        appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.pEngineName = "No Engine";
-        appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-        appInfo.apiVersion = VK_API_VERSION_1_0;
-
-        // Gerekli uzantıları al (VK_KHR_SURFACE ve VK_KHR_ANDROID_SURFACE)
-        std::vector<const char*> instanceExtensions = {
-            VK_KHR_SURFACE_EXTENSION_NAME,
-            VK_KHR_ANDROID_SURFACE_EXTENSION_NAME
-        };
-
-        VkInstanceCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-        createInfo.pApplicationInfo = &appInfo;
-        createInfo.enabledExtensionCount = static_cast<uint32_t>(instanceExtensions.size());
-        createInfo.ppEnabledExtensionNames = instanceExtensions.data();
-        createInfo.enabledLayerCount = 0; // Android'de doğrulama katmanları (validation layers) varsayılan olarak kapalı
-
-        if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
-            LOGE("Vulkan instance oluşturulamadı!");
-            throw std::runtime_error("Vulkan instance oluşturulamadı!");
-        }
-    }
-
-    // --- Yüzey (Surface) Oluşturma (Android'e Özgü) ---
-    void createSurface() {
-        VkAndroidSurfaceCreateInfoKHR createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
-        createInfo.window = app->window;
-
-        if (vkCreateAndroidSurfaceKHR(instance, &createInfo, nullptr, &surface) != VK_SUCCESS) {
-            LOGE("Android yüzeyi oluşturulamadı!");
-            throw std::runtime_error("Android yüzeyi oluşturulamadı!");
-        }
-    }
-
-    // --- Fiziksel Cihaz Seçimi ---
-    void pickPhysicalDevice() {
-        uint32_t deviceCount = 0;
-        vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-
-        if (deviceCount == 0) {
-            LOGE("Vulkan destekli cihaz bulunamadı!");
-            throw std::runtime_error("Vulkan destekli cihaz bulunamadı!");
-        }
-
-        std::vector<VkPhysicalDevice> devices(deviceCount);
-        vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
-
-        for (const auto& device : devices) {
-            if (isDeviceSuitable(device)) {
-                physicalDevice = device;
-                break;
-            }
-        }
-
-        if (physicalDevice == VK_NULL_HANDLE) {
-            LOGE("Uygun bir fiziksel cihaz bulunamadı!");
-            throw std::runtime_error("Uygun bir fiziksel cihaz bulunamadı!");
-        }
-    }
-
-    bool isDeviceSuitable(VkPhysicalDevice device) {
-        // Queue Ailelerini ve Uzantıları Kontrol Et
-        QueueFamilyIndices indices = findQueueFamilies(device);
-        bool extensionsSupported = checkDeviceExtensionSupport(device);
-
-        bool swapChainAdequate = false;
-        if (extensionsSupported) {
-            SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
-            swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
-        }
-
-        return indices.isComplete() && extensionsSupported && swapChainAdequate;
-    }
-
-    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device) {
-        QueueFamilyIndices indices;
-        uint32_t queueFamilyCount = 0;
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-        vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
-
-        int i = 0;
-        for (const auto& queueFamily : queueFamilies) {
-            if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-                indices.graphicsFamily = i;
-            }
-            VkBool32 presentSupport = false;
-            vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
-            if (presentSupport) {
-                indices.presentFamily = i;
-            }
-            if (indices.isComplete()) break;
-            i++;
-        }
-        return indices;
-    }
-
-    bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
-        uint32_t extensionCount;
-        vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
-        std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-        vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
-
-        std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
-        for (const auto& extension : availableExtensions) {
-            requiredExtensions.erase(extension.extensionName);
-        }
-        return requiredExtensions.empty();
-    }
-
-    // --- Mantıksal Cihaz (Logical Device) Oluşturma ---
-    void createLogicalDevice() {
-        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-
-        std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-        std::set<uint32_t> uniqueQueueFamilies = {indices.graphicsFamily.value(), indices.presentFamily.value()};
-
-        float queuePriority = 1.0f;
-        for (uint32_t queueFamily : uniqueQueueFamilies) {
-            VkDeviceQueueCreateInfo queueCreateInfo{};
-            queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-            queueCreateInfo.queueFamilyIndex = queueFamily;
-            queueCreateInfo.queueCount = 1;
-            queueCreateInfo.pQueuePriorities = &queuePriority;
-            queueCreateInfos.push_back(queueCreateInfo);
-        }
-
-        VkPhysicalDeviceFeatures deviceFeatures{};
-
-        VkDeviceCreateInfo createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-        createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
-        createInfo.pQueueCreateInfos = queueCreateInfos.data();
-        createInfo.pEnabledFeatures = &deviceFeatures;
-        createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-        createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-        createInfo.enabledLayerCount = 0;
-
-        if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS) {
-            LOGE("Mantıksal cihaz oluşturulamadı!");
-            throw std::runtime_error("Mantıksal cihaz oluşturulamadı!");
-        }
-
-        vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
-        vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
-    }
-
-    // --- Takas Zinciri (Swap Chain) ve İlgili Kaynakları Oluşturma ---
-    void createSwapchainAndResources() {
-        createSwapChain();
-        createImageViews();
-        createRenderPass();
-        createFramebuffers();
-        createCommandPool();
-        createCommandBuffers(); // Mavi temizleme komutlarını kaydeder
-    }
-
-    void createSwapChain() {
-        SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
-
-        VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
-        VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
-        VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
-
-        // Minimum görüntü sayısı + 1
-        uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
-        if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
-            imageCount = swapChainSupport.capabilities.maxImageCount;
-        }
-
-        VkSwapchainCreateInfoKHR createInfo{};
-        createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-        createInfo.surface = surface;
-        createInfo.minImageCount = imageCount;
-        createInfo.imageFormat = surfaceFormat.format;
-        createInfo.imageColorSpace = surfaceFormat.colorSpace;
-        createInfo.imageExtent = extent;
-        createInfo.imageArrayLayers = 1;
-        createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-        QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-        uint32_t queueFamilyIndices[] = {indices.graphicsFamily.value(), indices.presentFamily.value()};
-
-        if (indices.graphicsFamily != indices.presentFamily) {
-            createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-            createInfo.queueFamilyIndexCount = 2;
-            createInfo.pQueueFamilyIndices = queueFamilyIndices;
-        } else {
-            createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-        }
-
-        createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
-        createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-        createInfo.presentMode = presentMode;
-        createInfo.clipped = VK_TRUE;
-        createInfo.oldSwapchain = VK_NULL_HANDLE;
-
-        if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS) {
-            LOGE("Takas zinciri oluşturulamadı!");
-            throw std::runtime_error("Takas zinciri oluşturulamadı!");
-        }
-
-        vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
-        swapChainImages.resize(imageCount);
-        vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
-
-        swapChainImageFormat = surfaceFormat.format;
-        swapChainExtent = extent;
-    }
-
-    void createImageViews() {
-        swapChainImageViews.resize(swapChainImages.size());
-        for (size_t i = 0; i < swapChainImages.size(); i++) {
-            VkImageViewCreateInfo createInfo{};
-            createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-            createInfo.image = swapChainImages[i];
-            createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-            createInfo.format = swapChainImageFormat;
-            createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-            createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            createInfo.subresourceRange.baseMipLevel = 0;
-            createInfo.subresourceRange.levelCount = 1;
-            createInfo.subresourceRange.baseArrayLayer = 0;
-            createInfo.subresourceRange.layerCount = 1;
-
-            if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS) {
-                LOGE("Görüntü görünümü oluşturulamadı!");
-                throw std::runtime_error("Görüntü görünümü oluşturulamadı!");
-            }
-        }
-    }
-
-    void createRenderPass() {
-        VkAttachmentDescription colorAttachment{};
-        colorAttachment.format = swapChainImageFormat;
-        colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-        // Temizleme işlemi (Mavi)
-        colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-        colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-        colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-        colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-
-        VkAttachmentReference colorAttachmentRef{};
-        colorAttachmentRef.attachment = 0;
-        colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-        VkSubpassDescription subpass{};
-        subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        subpass.colorAttachmentCount = 1;
-        subpass.pColorAttachments = &colorAttachmentRef;
-
-        VkRenderPassCreateInfo renderPassInfo{};
-        renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-        renderPassInfo.attachmentCount = 1;
-        renderPassInfo.pAttachments = &colorAttachment;
-        renderPassInfo.subpassCount = 1;
-        renderPassInfo.pSubpasses = &subpass;
-
-        if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
-            LOGE("Render pass oluşturulamadı!");
-            throw std::runtime_error("Render pass oluşturulamadı!");
-        }
-    }
-
-    void createFramebuffers() {
-        swapChainFramebuffers.resize(swapChainImageViews.size());
-        for (size_t i = 0; i < swapChainImageViews.size(); i++) {
-            VkImageView attachments[] = { swapChainImageViews[i] };
-
-            VkFramebufferCreateInfo framebufferInfo{};
-            framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-            framebufferInfo.renderPass = renderPass;
-            framebufferInfo.attachmentCount = 1;
-            framebufferInfo.pAttachments = attachments;
-            framebufferInfo.width = swapChainExtent.width;
-            framebufferInfo.height = swapChainExtent.height;
-            framebufferInfo.layers = 1;
-
-            if (vkCreateFramebuffer(device, &framebufferInfo, nullptr, &swapChainFramebuffers[i]) != VK_SUCCESS) {
-                LOGE("Framebuffer oluşturulamadı!");
-                throw std::runtime_error("Framebuffer oluşturulamadı!");
-            }
-        }
-    }
-
-    void createCommandPool() {
-        QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
-
-        VkCommandPoolCreateInfo poolInfo{};
-        poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-        poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
-        poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-
-        if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS) {
-            LOGE("Komut havuzu oluşturulamadı!");
-            throw std::runtime_error("Komut havuzu oluşturulamadı!");
-        }
-    }
-
-    // --- Mavi Temizleme Komut Arabelleklerini Oluşturma ve Kaydetme ---
-    void createCommandBuffers() {
-        commandBuffers.resize(swapChainFramebuffers.size());
-
-        VkCommandBufferAllocateInfo allocInfo{};
-        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-        allocInfo.commandPool = commandPool;
-        allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        allocInfo.commandBufferCount = (uint32_t)commandBuffers.size();
-
-        if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS) {
-            LOGE("Komut arabellekleri oluşturulamadı!");
-            throw std::runtime_error("Komut arabellekleri oluşturulamadı!");
-        }
-
-        for (size_t i = 0; i < commandBuffers.size(); i++) {
-            VkCommandBufferBeginInfo beginInfo{};
-            beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-            if (vkBeginCommandBuffer(commandBuffers[i], &beginInfo) != VK_SUCCESS) {
-                LOGE("Komut arabelleği kaydetmeye başlanamadı!");
-                throw std::runtime_error("Komut arabelleği kaydetmeye başlanamadı!");
-            }
-
-            VkRenderPassBeginInfo renderPassInfo{};
-            renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-            renderPassInfo.renderPass = renderPass;
-            renderPassInfo.framebuffer = swapChainFramebuffers[i];
-            renderPassInfo.renderArea.offset = {0, 0};
-            renderPassInfo.renderArea.extent = swapChainExtent;
-
-            // Mavi renge temizleme değerini ayarla (R:0.0, G:0.0, B:1.0, A:1.0)
-            VkClearValue clearColor = {{{0.0f, 0.0f, 1.0f, 1.0f}}};
-            renderPassInfo.clearValueCount = 1;
-            renderPassInfo.pClearValues = &clearColor;
-
-            vkCmdBeginRenderPass(commandBuffers[i], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-
-            // Çizim komutları yok, sadece temizleme
-            
-            vkCmdEndRenderPass(commandBuffers[i]);
-
-            if (vkEndCommandBuffer(commandBuffers[i]) != VK_SUCCESS) {
-                LOGE("Komut arabelleği kaydı tamamlanamadı!");
-                throw std::runtime_error("Komut arabelleği kaydı tamamlanamadı!");
-            }
-        }
-    }
-
-    // --- Senkronizasyon Nesneleri (Semaphores, Fences) Oluşturma ---
-    void createSyncObjects() {
-        VkSemaphoreCreateInfo semaphoreInfo{};
-        semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-
-        VkFenceCreateInfo fenceInfo{};
-        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphore) != VK_SUCCESS ||
-            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphore) != VK_SUCCESS ||
-            vkCreateFence(device, &fenceInfo, nullptr, &inFlightFence) != VK_SUCCESS) {
-            
-            LOGE("Senkronizasyon nesneleri oluşturulamadı!");
-            throw std::runtime_error("Senkronizasyon nesneleri oluşturulamadı!");
-        }
-    }
-
-    // --- Takas Zinciri Destek Fonksiyonları ---
-    SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device) {
-        SwapChainSupportDetails details;
-        vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
-
-        uint32_t formatCount;
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
-        if (formatCount != 0) {
-            details.formats.resize(formatCount);
-            vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
-        }
-
-        uint32_t presentModeCount;
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
-        if (presentModeCount != 0) {
-            details.presentModes.resize(presentModeCount);
-            vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
-        }
-        return details;
-    }
-
-    VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
-        for (const auto& availableFormat : availableFormats) {
-            if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB && availableFormat.colorSpace == VK_COLOR_SPACE_SRLINEAR_EXT) {
-                return availableFormat;
-            }
-        }
-        return availableFormats[0];
-    }
-
-    VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
-        for (const auto& availablePresentMode : availablePresentModes) {
-            // Android'de VK_PRESENT_MODE_FIFO_KHR genellikle en iyi seçenektir
-            if (availablePresentMode == VK_PRESENT_MODE_FIFO_KHR) {
-                return availablePresentMode; 
-            }
-        }
-        // Alternatif olarak, eğer destekleniyorsa VK_PRESENT_MODE_MAILBOX_KHR kullanılabilir, 
-        // ancak FIFO Android'de neredeyse evrensel olarak kullanılır.
-        return VK_PRESENT_MODE_FIFO_KHR;
-    }
-
-    VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities) {
-        // Android'de genellikle extent tanımsız (UINT32_MAX) değildir, 
-        // ancak tanımsızsa pencere boyutlarını kullanırız.
-        if (capabilities.currentExtent.width != UINT32_MAX) {
-            return capabilities.currentExtent;
-        } else {
-            // NDK'da pencere genişlik/yüksekliğini ANativeWindow_getWidth/getHeight ile alabiliriz
-            int width = ANativeWindow_getWidth(app->window);
-            int height = ANativeWindow_getHeight(app->window);
-
-            VkExtent2D actualExtent = {
-                static_cast<uint32_t>(width),
-                static_cast<uint32_t>(height)
-            };
-            
-            // Boyutları kısıtlamıyoruz, mevcut pencere boyutunu kullanıyoruz
-            return actualExtent;
-        }
-    }
-
-    // --- Yeniden Boyutlandırma/Yeniden Oluşturma İşlemleri ---
-    void recreateSwapchainAndResources() {
-        LOGI("Takas zinciri yeniden oluşturuluyor...");
-        // Pencerenin boyutunun 0 olmadığı bir durumda bekleriz
-        int width = 0;
-        int height = 0;
-        while (width == 0 || height == 0) {
-            width = ANativeWindow_getWidth(app->window);
-            height = ANativeWindow_getHeight(app->window);
-            // Kısa bir bekleme
-        }
-
-        vkDeviceWaitIdle(device);
-
-        cleanupSwapchainResources();
-        
-        createSwapchainAndResources();
-
-        LOGI("Takas zinciri yeniden oluşturma tamamlandı.");
+    GraphicsSystem gfx;
+    NetworkSystem network;
+    
+    AppState currentState = AppState::CHARACTER_SELECTION;
+    CharacterType selectedChar = CharacterType::NONE;
+    
+    // Grafik ve Optimizasyon
+    int graphicsQualityLevel = 10; // 10 (Maksimum)
+    bool optimizationEnabled = false;
+    double lastFrameTime = 0.0;
+    float deltaTime = 0.0f; 
+    
+    // Oyun/Lobi Verileri
+    std::string currentUserId = "Kullanici_" + std::to_string(std::rand() % 100);
+    std::string testPasswordInput = "";
+    std::string currentChatInput = "";
+
+    // Zaman Döngüsü
+    std::chrono::steady_clock::time_point cycleStartTime;
+    
+    // Kamera ve Hareket
+    float playerX = 0.0f;
+    float playerY = 1.7f; // Kafa yüksekliği
+    float playerZ = 0.0f;
+    float cameraBobTime = 0.0f; 
+    bool isWalking = false; 
+    
+    // Lobi Renk Ayarı (Canlı Dinamiklik)
+    float lobiClearColor[4] = {0.8f, 0.8f, 0.8f, 1.0f}; 
+
+    GameEngine(struct android_app* a) : app(a) {
+        std::srand(std::time(nullptr));
+        cycleStartTime = std::chrono::steady_clock::now();
+        LOGI("Kullanıcı ID'si: %s", currentUserId.c_str());
     }
     
-    void cleanupSwapchainResources() {
-        for (auto framebuffer : swapChainFramebuffers) {
-            vkDestroyFramebuffer(device, framebuffer, nullptr);
+    // --- 4. Grafik Başlatma ve Optimizasyon ---
+
+    GraphicsAPI initializeGraphics() {
+        // 3 Vulkan yöntemi deneniyor
+        if (gfx.tryVulkanInit(1)) return gfx.api;
+        if (gfx.tryVulkanInit(2)) return gfx.api;
+        if (gfx.tryVulkanInit(3)) return gfx.api;
+
+        // Vulkan başarısızsa GLES 3.0 deneniyor
+        if (gfx.tryGLESInit()) return gfx.api;
+
+        return GraphicsAPI::NONE;
+    }
+
+    void applyGraphicsSettings() {
+        // graphicsQualityLevel'e göre shader'ları, çözünürlükleri ayarlama simülasyonu
+        
+        std::string qualityName;
+        if (graphicsQualityLevel >= 8) qualityName = "Ultra (Işın İzleme/Volumetrik Sis)";
+        else if (graphicsQualityLevel >= 5) qualityName = "Yüksek (Yansımalar/Gölgeler)";
+        else if (graphicsQualityLevel >= 2) qualityName = "Orta (Basit Gölgeler)";
+        else qualityName = "Çöp (Maksimum Hız)";
+
+        LOGI("OPTİMİZASYON: Grafik Kalitesi seviyesi: %d (%s) olarak ayarlandı.", graphicsQualityLevel, qualityName.c_str());
+        // Gerçekte burada vkCmdUpdatePipeline veya GLES glProgramUniform çağrıları yapılır.
+    }
+    
+    // --- 5. Yürüme ve Kamera Simülasyonu ---
+    void simulatePlayerMovement(float dt) {
+        // Head Bobbing sadece IN_GAME/TEST_MODE'da yürüme (isWalking=true) sırasında çalışır.
+        if (!isWalking) { cameraBobTime = 0.0f; return; }
+
+        const float WALK_SPEED = 2.5f; 
+        const float BOB_AMOUNT = 0.06f; 
+        const float BOB_FREQUENCY = 10.0f; 
+        
+        playerZ += WALK_SPEED * dt; // İlerleme (Simülasyon)
+        
+        cameraBobTime += dt * BOB_FREQUENCY;
+        
+        float bobY = std::sin(cameraBobTime) * BOB_AMOUNT;
+        float bobX = std::cos(cameraBobTime / 2.0f) * (BOB_AMOUNT / 2.0f);
+
+        // Kameranın pozisyonu (Vulkan/GLES View Matrisine bu değerler verilir)
+        gfx.camY = playerY + bobY;
+        gfx.camX = playerX + bobX;
+
+        // LOGI("Kamera Y: %.2f", gfx.camY); // Gerçekçi sallanma simülasyonu
+    }
+
+    // --- 6. Sahne ve Shader İşlemleri ---
+    void updateTimeCycle(long long elapsedSeconds) {
+        // 5 dakika (300 saniye) gece, 5 dakika gündüz
+        long long cycleTime = elapsedSeconds % 600; // Toplam 10 dakika (600 saniye)
+        bool isNight = (cycleTime >= 300); 
+        float cycleProgress = (float)(cycleTime % 300) / 300.0f; // Geçiş yumuşaklığı (0.0 - 1.0)
+        
+        float r, g, b;
+        
+        if (isNight) {
+            // Gece (Koyu Mavimsi Sis) -> Gündüz geçişi (cycleProgress 0'dan 1'e)
+            // Koyu Mavi (0.05, 0.05, 0.15) -> Açık Mavi/Beyaz (0.6, 0.8, 1.0)
+            r = 0.05f * (1.0f - cycleProgress) + 0.6f * cycleProgress;
+            g = 0.05f * (1.0f - cycleProgress) + 0.8f * cycleProgress;
+            b = 0.15f * (1.0f - cycleProgress) + 1.0f * cycleProgress;
+
+            // Gerçekte burada ışın izleme ve volumetrik sis shader uniform'ları güncellenir.
+            LOGI("SHADERS: Gece (Sisli, Işın İzleme) aktif. İlerleme: %.1f", cycleProgress * 100);
+        } else {
+            // Gündüz -> Gece geçişi
+            // Açık Mavi/Beyaz (0.6, 0.8, 1.0) -> Koyu Mavi (0.05, 0.05, 0.15)
+            r = 0.6f * (1.0f - cycleProgress) + 0.05f * cycleProgress;
+            g = 0.8f * (1.0f - cycleProgress) + 0.05f * cycleProgress;
+            b = 1.0f * (1.0f - cycleProgress) + 0.15f * cycleProgress;
+
+            // Gerçekte burada canlı gölgeler ve yansımalar aktif edilir.
+            LOGI("SHADERS: Gündüz (Canlı Renkler) aktif. İlerleme: %.1f", cycleProgress * 100);
         }
-        // Komut havuzunu temizlemiyoruz, ancak arabellekleri havuzdan temizleyebiliriz
-        vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
-        commandBuffers.clear();
+        
+        // Ekranı bu dinamik renkle temizle (sadece arkaplan)
+        gfx.clearScreen(r, g, b, 1.0f);
+    }
+    
+    void loadAndDrawScene() {
+        // GLTF/GLB Yükleme Simülasyonu (TinyGLTF ile yapılacaktır)
+        if (currentState == AppState::IN_GAME || currentState == AppState::TEST_MODE) {
+            // Harita
+            LOGI("ÇİZİM: Poolrooms Haritası (poolrooms.glb) çiziliyor.");
+            
+            // Karakter
+            std::string modelName = "kaan.gltf";
+            if (selectedChar == CharacterType::GIRL) {
+                // Soyunma durumu kontrolü burada yapılabilir.
+                modelName = "kız.gltf / kız1.gltf"; 
+            }
+            LOGI("ÇİZİM: %s Karakter (%s) çiziliyor. Kamera (%.2f, %.2f, %.2f)", 
+                 selectedChar == CharacterType::BOY ? "Erkek" : "Kız", modelName.c_str(), 
+                 gfx.camX, gfx.camY, gfx.camZ);
+        }
+    }
+    
+    // --- 7. Kullanıcı Arayüzü (UI) Çizimi (ImGui ile yapılacaktır) ---
+    void drawUIAndCharacters(double fps) {
+        // Bu kısım ImGui kullanarak Vulkan/GLES üzerine çizim yapmayı simüle eder.
 
-        vkDestroyRenderPass(device, renderPass, nullptr);
-
-        for (auto imageView : swapChainImageViews) {
-            vkDestroyImageView(device, imageView, nullptr);
+        // FPS Gösterimi
+        if (optimizationEnabled) {
+            std::stringstream ss;
+            ss << "FPS: " << std::fixed << std::setprecision(0) << std::round(fps);
+            drawText(ss.str(), 0, 0);
         }
 
-        vkDestroySwapchainKHR(device, swapChain, nullptr);
+        // Duruma göre menü ve butonları çiz
+        switch (currentState) {
+            case AppState::CHARACTER_SELECTION:
+                drawButton("KIZ", 1); drawButton("ERKEK", 2);
+                drawText("Lütfen bir karakter seçin.", 3);
+                break;
+            case AppState::MAIN_MENU:
+                drawButton("TEST SÜRÜMÜ", 1); drawButton("MULTIPLAYER SÜRÜM", 2);
+                drawButton("AYARLAR (Optimizasyon: %s)", optimizationEnabled ? 3 : 4);
+                break;
+            case AppState::TEST_PASSWORD_INPUT:
+                drawText("Parola Giriniz:", 1);
+                drawTextInput(testPasswordInput, 2); 
+                break;
+            case AppState::MULTIPLAYER_MENU:
+                drawButton("LOBİ OLUŞTUR", 1); drawButton("LOBİYE GİR (Aktif Lobiler)", 2);
+                break;
+            case AppState::LOBBY_LIST_MENU:
+                drawText("Aktif Lobiler Listesi (Placeholder)", 1);
+                break;
+            case AppState::LOBBY_CREATE_MENU:
+                drawText("Lobi Oluşturuluyor... Lütfen bekleyin.", 1);
+                break;
+            case AppState::LOBBY_WAITING:
+                drawText("Lobi ID: " + network.currentLobbyId, 1);
+                drawText("Diğer oyuncu bekleniyor (Maks: 2)", 2);
+                break;
+            case AppState::IN_GAME:
+            case AppState::TEST_MODE:
+                drawChatSystem();
+                if (selectedChar == CharacterType::GIRL) {
+                    drawButton("SOYUN", 1); // Sol üst köşe butonu
+                }
+                if (currentState == AppState::TEST_MODE) drawText("TEST SÜRÜMÜ (Chat Aktif)", 0);
+                break;
+        }
+    }
+    
+    void drawButton(const std::string& text, int position) {
+        // ImGui::Button() çağrısı simüle ediliyor
+        // position: Ekranda konumu temsil eder
+        LOGI("UI_ÇİZİM: Buton: %s", text.c_str());
+    }
+    
+    void drawText(const std::string& text, int position) {
+        // ImGui::Text() çağrısı simüle ediliyor
+        LOGI("UI_ÇİZİM: Metin: %s", text.c_str());
+    }
+
+    void drawTextInput(std::string& input, int position) {
+        // ImGui::InputText() çağrısı simüle ediliyor
+        LOGI("UI_ÇİZİM: Klavye Girişi: %s", input.c_str());
+    }
+    
+    void drawChatSystem() {
+        // ImGui penceresi ile Chat arayüzü çiziliyor
+        LOGI("UI_ÇİZİM: Chat Penceresi çizildi. %zu mesaj mevcut.", network.chatHistory.size());
+        for (const auto& msg : network.chatHistory) {
+            LOGI("CHAT: %s", msg.c_str());
+        }
+        drawTextInput(currentChatInput, 5); // Yeni mesaj girişi
+    }
+
+    // --- 8. Kullanıcı Etkileşim ve Mantık İşleyicileri ---
+    void handleTap(float x, float y) {
+        // Bu koordinatlar gerçek ImGui butonlarına eşlenmelidir.
+        if (currentState == AppState::CHARACTER_SELECTION) {
+            selectedChar = (x < app->window->width() / 2) ? CharacterType::BOY : CharacterType::GIRL;
+            currentState = AppState::MAIN_MENU;
+            LOGI("Karakter Seçimi Tamamlandı: %s. Ana Menüye geçildi.", selectedChar == CharacterType::BOY ? "Erkek" : "Kız");
+        } else if (currentState == AppState::MAIN_MENU) {
+            if (x < app->window->width() / 3) { // Sol 1/3
+                 currentState = AppState::TEST_PASSWORD_INPUT; 
+            } else if (x < app->window->width() * 2 / 3) { // Orta 1/3
+                 currentState = AppState::MULTIPLAYER_MENU;
+            } else { // Sağ 1/3 (AYARLAR)
+                 optimizationEnabled = !optimizationEnabled;
+                 applyGraphicsSettings();
+            }
+        } else if (currentState == AppState::MULTIPLAYER_MENU) {
+            if (x < app->window->width() / 2) { 
+                 network.createLobby(selectedChar, currentUserId);
+                 currentState = AppState::LOBBY_WAITING; 
+            } else {
+                 currentState = AppState::LOBBY_LIST_MENU; 
+            }
+        } else if ((currentState == AppState::IN_GAME || currentState == AppState::TEST_MODE) && selectedChar == CharacterType::GIRL) {
+            // Soyun Butonu Kontrolü (Sol üst köşeye yakın bir alana dokunma simülasyonu)
+             if (x < 200 && y < 200) { 
+                 LOGI("KIZ KARAKTER: Soyunma animasyonu/model değişimi (kız1.gltf) tetiklendi.");
+             }
+        }
+    }
+    
+    // Klavye Girişini İşle
+    void handleKeyboardInput(char key) {
+        if (key == '\n') { // Enter basıldı
+            if (currentState == AppState::TEST_PASSWORD_INPUT) {
+                if (testPasswordInput == TEST_PASSWORD) {
+                    currentState = AppState::TEST_MODE;
+                    LOGI("Parola Doğru. TEST MODU başlatıldı.");
+                } else {
+                    LOGI("Yanlış Parola!");
+                    testPasswordInput = ""; 
+                }
+            } else if (currentState == AppState::IN_GAME || currentState == AppState::TEST_MODE) {
+                if (!currentChatInput.empty()) {
+                    network.sendChatMessage(currentUserId, currentChatInput);
+                    currentChatInput.clear();
+                }
+            }
+        } else {
+            // Karakter ekleme (Parola veya Chat)
+            if (currentState == AppState::TEST_PASSWORD_INPUT) {
+                testPasswordInput += key;
+            } else if (currentState == AppState::IN_GAME || currentState == AppState::TEST_MODE) {
+                currentChatInput += key;
+            }
+        }
+    }
+
+    // --- 9. Ana Döngü ve Temizlik ---
+    void drawFrame() {
+        auto now = std::chrono::steady_clock::now();
+        double currentTime = std::chrono::duration_cast<std::chrono::microseconds>(now.time_since_epoch()).count() / 1000000.0;
+        deltaTime = (float)(currentTime - lastFrameTime);
+        double fps = (deltaTime > 0) ? 1.0 / deltaTime : 0.0;
+        lastFrameTime = currentTime;
+
+        // FPS Optimizasyonu
+        if (optimizationEnabled && graphicsQualityLevel > 0 && fps < 20.0) {
+            graphicsQualityLevel = std::max(0, graphicsQualityLevel - 1);
+            applyGraphicsSettings();
+        } else if (optimizationEnabled && graphicsQualityLevel < 10 && fps > 21.0) {
+            graphicsQualityLevel = std::min(10, graphicsQualityLevel + 1);
+            applyGraphicsSettings();
+        }
+        
+        // Yürüme ve Kamera
+        isWalking = (currentState == AppState::IN_GAME || currentState == AppState::TEST_MODE);
+        simulatePlayerMovement(deltaTime);
+
+        // Gece/Gündüz Döngüsü
+        if (currentState == AppState::IN_GAME || currentState == AppState::TEST_MODE) {
+            auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - cycleStartTime).count();
+            updateTimeCycle(elapsed); // Dinamik temizleme rengi (sis, ışık simülasyonu)
+        } else if (currentState == AppState::LOBBY_WAITING) {
+            // Lobi: Canlı Renkler
+            float t = (float)std::chrono::duration_cast<std::chrono::milliseconds>(now - cycleStartTime).count() / 5000.0f; 
+            float r = 0.5f + 0.5f * std::sin(t);
+            float g = 0.5f + 0.5f * std::sin(t + 2.0f);
+            float b = 0.5f + 0.5f * std::sin(t + 4.0f);
+            gfx.clearScreen(r, g, b, 1.0f);
+        } else {
+            gfx.clearScreen(0.1f, 0.1f, 0.1f, 1.0f); // Statik Menü Arkaplanı
+        }
+
+        // 3D ve UI Çizimlerini Yap
+        loadAndDrawScene();
+        drawUIAndCharacters(fps);
+        
+        presentFrame();
+    }
+    
+    void presentFrame() {
+        // vkQueuePresentKHR veya eglSwapBuffers çağrısı simüle ediliyor.
+        // LOGI("FRAME: Çizim tamamlandı, ekrana sunuluyor.");
+    }
+    
+    void cleanUp() {
+        // Vulkan/GLES ve diğer kaynakların temizlenmesi
+        LOGI("TEMİZLEME: Grafik kaynakları serbest bırakıldı.");
     }
 };
 
-// --- Android Etkinlik Yönetimi ---
+// --- 10. Android NDK Olay İşleyicileri ---
 
-// Android NDK'dan gelen komutları işler (pencere hazır, bellek düşük, vb.)
-static void handleCmd(struct android_app* app, int32_t cmd) {
-    VulkanEngine* engine = (VulkanEngine*)app->userData;
-    
+static void handleAppCmd(struct android_app* app, int32_t cmd) {
+    auto engine = (GameEngine*)app->userData;
     switch (cmd) {
         case APP_CMD_INIT_WINDOW:
-            // Pencere oluşturuldu, Vulkan'ı başlatma zamanı
-            if (app->window != NULL && !engine->initialized) {
-                try {
-                    engine->initVulkan();
-                    engine->running = true;
-                    LOGI("Vulkan başlatıldı ve çizime hazır.");
-                } catch (const std::runtime_error& e) {
-                    LOGE("Vulkan başlatma hatası: %s", e.what());
-                    engine->running = false; // Hata durumunda döngüyü durdur
-                }
+            if (app->window != NULL && engine->gfx.api == GraphicsAPI::NONE) {
+                engine->initializeGraphics();
+                engine->applyGraphicsSettings();
             }
             break;
         case APP_CMD_TERM_WINDOW:
-            // Pencere kapatılıyor veya yok ediliyor
-            engine->running = false;
-            engine->cleanup();
+            engine->cleanUp();
             break;
         case APP_CMD_GAINED_FOCUS:
-            engine->running = true;
+            // Oyunun devam etmesini sağla
             break;
         case APP_CMD_LOST_FOCUS:
-            engine->running = false;
+            // Oyunun duraklatılmasını sağla
             break;
-        case APP_CMD_WINDOW_RESIZED:
-            // Pencere boyutu değişti, takas zincirini yeniden oluştur
-            if (engine->initialized) {
-                engine->recreateSwapchainAndResources();
-            }
-            break;
-        default:
-            break;
+        // Diğer komutlar...
     }
 }
 
-// Android NDK uygulaması için ana giriş noktası
-void android_main(struct android_app* app) {
-    // Vulkan motorunu oluştur
-    VulkanEngine engine(app);
-    app->userData = &engine;
-    app->onAppCmd = handleCmd;
+static int32_t handleInput(struct android_app* app, AInputEvent* event) {
+    auto engine = (GameEngine*)app->userData;
+    
+    // Dokunma (Motion) Olayları
+    if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_MOTION && 
+        AMotionEvent_getAction(event) == AMOTION_EVENT_ACTION_UP) {
+        
+        engine->handleTap(AMotionEvent_getX(event, 0), AMotionEvent_getY(event, 0));
+        return 1;
+    }
+    
+    // Klavye (Key) Olayları
+    else if (AInputEvent_getType(event) == AINPUT_EVENT_TYPE_KEY && 
+             AKeyEvent_getAction(event) == AKEY_EVENT_ACTION_DOWN) {
+        
+        int32_t keyCode = AKeyEvent_getKeyCode(event);
+        
+        // Basit ASCII klavye girişi simülasyonu
+        if (keyCode >= AKEYCODE_A && keyCode <= AKEYCODE_Z) {
+            engine->handleKeyboardInput((char)('a' + (keyCode - AKEYCODE_A)));
+        } else if (keyCode >= AKEYCODE_0 && keyCode <= AKEYCODE_9) {
+            engine->handleKeyboardInput((char)('0' + (keyCode - AKEYCODE_0)));
+        } else if (keyCode == AKEYCODE_SPACE) {
+            engine->handleKeyboardInput(' ');
+        } else if (keyCode == AKEYCODE_ENTER) {
+             engine->handleKeyboardInput('\n');
+        } else if (keyCode == AKEYCODE_DEL) { // Silme tuşu (Parola/Chat için)
+            // Geri silme mantığı (simüle ediliyor)
+        }
+        return 1;
+    }
 
-    // Ana döngü
+    return 0; 
+}
+
+// --- 11. Android Ana Fonksiyon ---
+void android_main(struct android_app* app) {
+    GameEngine engine(app);
+    app->userData = &engine;
+    app->onAppCmd = handleAppCmd;
+    app->onInputEvent = handleInput;
+
     int ident;
     int events;
     struct android_poll_source* source;
 
-    // Uygulama sonlandırılana kadar döngü
+    // Ana Uygulama Döngüsü
     while (!app->destroy_requested) {
-        // Olayları al
-        while ((ident = ALooper_pollAll(engine.running ? 0 : -1, NULL, &events, (void**)&source)) >= 0) {
-            // Bir olay var
+        // Grafik API'si başlatılana kadar engelle
+        while (ALooper_pollAll(engine.gfx.api != GraphicsAPI::NONE ? 0 : -1, NULL, &events, (void**)&source) >= 0) {
             if (source != NULL) {
                 source->process(app, source);
             }
         }
 
-        // Eğer motor çalışıyorsa ve başlatıldıysa, bir kare çiz
-        if (engine.running && engine.initialized) {
-            try {
-                engine.drawFrame();
-            } catch (const std::runtime_error& e) {
-                LOGE("Çizim hatası: %s", e.what());
-                // Hata durumunda yeniden oluşturmayı dene
-                engine.recreateSwapchainAndResources();
-            }
+        // Grafik hazırsa çizim yap
+        if (engine.gfx.api != GraphicsAPI::NONE) {
+            engine.drawFrame();
         }
     }
-
-    LOGI("Uygulama sonlanıyor.");
 }

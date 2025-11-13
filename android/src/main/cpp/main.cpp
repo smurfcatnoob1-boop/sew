@@ -74,9 +74,6 @@ struct Engine {
 
 // ********************************** VULKAN UTILITY FONKSİYONLARI **********************************
 
-// Bu kısım, önceki kodunuzdaki tüm yardımcı fonksiyonları içerir.
-// Detaylar gizlenmiştir ancak tam olarak mevcuttur.
-
 SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device, VkSurfaceKHR surface) {
     SwapChainSupportDetails details;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
@@ -154,7 +151,7 @@ QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surfa
 
 bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, QueueFamilyIndices& indices) {
     VkPhysicalDeviceProperties deviceProperties;
-    vkGetPhysicalDeviceProperties(device, &deviceProperties); 
+    vkGetPhysicalDeviceProperties(device, deviceProperties); 
     if (deviceProperties.apiVersion < VK_API_VERSION_1_1) { return false; }
     indices = findQueueFamilies(device, surface);
     bool extensionsSupported = checkDeviceExtensionSupport(device);
@@ -255,7 +252,6 @@ bool createSwapChain(Engine* engine) {
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
     createInfo.imageExtent = extent;
     createInfo.imageArrayLayers = 1;
-    // PBR/RTX için gerekli olacak transfer bitleri
     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT; 
 
     QueueFamilyIndices indices = findQueueFamilies(engine->physicalDevice, engine->surface);
@@ -275,7 +271,6 @@ bool createSwapChain(Engine* engine) {
     createInfo.clipped = VK_TRUE;
     createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-    // BURASI, GRALLOC BUG'I YÜZÜNDEN ÇÖKME İHTİMALİ EN YÜKSEK OLAN YERDİR.
     if (vkCreateSwapchainKHR(engine->device, &createInfo, nullptr, &engine->swapchain) != VK_SUCCESS) {
         LOGE("KRİTİK HATA: Swap Chain oluşturulamadı! Vulkan başlatma başarısız."); 
         return false;
@@ -317,7 +312,6 @@ bool createRenderPass(Engine* engine) {
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = engine->swapchainImageFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    // CLEAR: Ekranı temizle (Mavi yapmak için)
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; 
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; 
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
@@ -401,7 +395,6 @@ bool createSyncObjects(Engine* engine) {
 bool init_gles_fallback(Engine* engine) {
     if (engine->app->window == NULL) { LOGE("GLES: Pencere başlatılmadı!"); return false; }
     
-    // ... (EGL Başlatma ve Context oluşturma kodları)
     engine->glesDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
     if (engine->glesDisplay == EGL_NO_DISPLAY || eglInitialize(engine->glesDisplay, 0, 0) != EGL_TRUE) { LOGE("GLES: Display/Başlatma Başarısız!"); return false; }
 
@@ -426,7 +419,6 @@ bool init_gles_fallback(Engine* engine) {
 
 // **************************** ÇİZİM KOMUTLARI (Mavi Ekran Testi) ****************************
 
-// Kısım 2: Vulkan Mavi Ekran Mantığı (Tam motor içindeki yeridir)
 void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, Engine* engine) {
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -457,7 +449,7 @@ void draw_vulkan_frame(Engine* engine) {
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(engine->device, engine->swapchain, UINT64_MAX, engine->imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
 
-    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) { return; } // Hata yönetimi
+    if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) { return; } 
 
     vkResetFences(engine->device, 1, &engine->inFlightFence);
     vkResetCommandBuffer(engine->commandBuffers[imageIndex], 0);
@@ -494,7 +486,6 @@ void draw_vulkan_frame(Engine* engine) {
     vkQueuePresentKHR(engine->presentQueue, &presentInfo);
 }
 
-// Kısım 2: GLES Mavi Ekran Mantığı (Fallback motor içindeki yeridir)
 void draw_gles_frame(Engine* engine) {
     if (engine->glesDisplay != EGL_NO_DISPLAY) {
         // Mavi ekran çizimi (Vulkan ile aynı renk)
@@ -513,7 +504,6 @@ void cleanup_vulkan(Engine* engine) {
         if (engine->imageAvailableSemaphore) { vkDestroySemaphore(engine->device, engine->imageAvailableSemaphore, nullptr); }
         if (engine->inFlightFence) { vkDestroyFence(engine->device, engine->inFlightFence, nullptr); }
         for (auto framebuffer : engine->swapchainFramebuffers) { vkDestroyFramebuffer(engine->device, framebuffer, nullptr); }
-        // Command Buffers zaten havuzla birlikte temizlenecek.
         if (engine->renderPass) { vkDestroyRenderPass(engine->device, engine->renderPass, nullptr); }
         for (auto imageView : engine->swapchainImageViews) { vkDestroyImageView(engine->device, imageView, nullptr); }
         if (engine->commandPool) { vkDestroyCommandPool(engine->device, engine->commandPool, nullptr); }
@@ -523,7 +513,6 @@ void cleanup_vulkan(Engine* engine) {
     if (engine->surface) { vkDestroySurfaceKHR(engine->vkInstance, engine->surface, nullptr); }
     if (engine->vkInstance) { vkDestroyInstance(engine->vkInstance, nullptr); }
     
-    // Motor durumunu sıfırla (app haricinde)
     *engine = { .app = engine->app }; 
     LOGI("VULKAN: Temizleme Başarılı.");
 }
@@ -538,7 +527,6 @@ bool init_vulkan_full(Engine* engine) {
     if (!pickPhysicalDevice(engine)) return false;
     if (!createLogicalDevice(engine)) return false;
     
-    // Burası çökme noktası
     if (!createSwapChain(engine)) return false; 
     
     if (!createImageViews(engine)) return false;
@@ -560,14 +548,12 @@ void engine_handle_cmd(struct android_app* app, int32_t cmd) {
     switch (cmd) {
         case APP_CMD_INIT_WINDOW:
             if (engine->app->window != NULL) {
-                // 1. Önce Vulkan'ı dene (ANA API)
                 if (init_vulkan_full(engine)) {
                     engine->running = true;
                     LOGI("BAŞLATMA: Vulkan Motoru Başarıyla Seçildi.");
                     return;
                 }
 
-                // 2. Vulkan başarısız olursa temizle ve GLES'e geri dön (YARDIMCI API)
                 LOGE("Vulkan başlatma başarısız oldu (muhtemelen Gralloc hatası). GLES Fallback deneniyor...");
                 cleanup_vulkan(engine); 
 
@@ -582,7 +568,8 @@ void engine_handle_cmd(struct android_app* app, int32_t cmd) {
             break;
         case APP_CMD_TERM_WINDOW:
             engine->running = false;
-            if (engine->is_vulkan) {
+            // engine bir pointer olduğu için burada -> kullanımı doğru.
+            if (engine->is_vulkan) { 
                 cleanup_vulkan(engine); 
             } else if (engine->glesDisplay != EGL_NO_DISPLAY) {
                 // GLES Temizliği
@@ -595,13 +582,13 @@ void engine_handle_cmd(struct android_app* app, int32_t cmd) {
             break;
         case APP_CMD_GAINED_FOCUS:
         case APP_CMD_LOST_FOCUS:
-            // Odak yönetimini burada yapabilirsiniz
             break;
     }
 }
 
 void android_main(struct android_app* state) {
-    struct Engine engine = {0};
+    // BURADA 'engine' bir struct'tır.
+    struct Engine engine = {0}; 
     state->userData = &engine;
     engine.app = state;
     state->onAppCmd = engine_handle_cmd;
@@ -616,9 +603,10 @@ void android_main(struct android_app* state) {
         if (state->destroyRequested != 0) break;
 
         if (engine.running) { 
+            // Çizim kısmı: engine bir struct olduğu için . kullanılır, pointer gerektiğinde &engine gönderilir.
             if (engine.is_vulkan) {
                 draw_vulkan_frame(&engine);
-            } else if (engine->glesDisplay != EGL_NO_DISPLAY) {
+            } else if (engine.glesDisplay != EGL_NO_DISPLAY) { // Hata düzeltildi: engine-> yerine engine.
                 draw_gles_frame(&engine);
             }
         }

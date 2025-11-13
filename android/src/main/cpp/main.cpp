@@ -164,7 +164,8 @@ QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surfa
 // Cihazın Vulkan 1.1 Desteğini Kontrol Eder
 bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, QueueFamilyIndices& indices) {
     VkPhysicalDeviceProperties deviceProperties;
-    vkGetPhysicalDeviceProperties(device, deviceProperties);
+    // DÜZELTME: İkinci argüman olarak yapının adresi (&) kullanılmalı.
+    vkGetPhysicalDeviceProperties(device, &deviceProperties); 
 
     if (deviceProperties.apiVersion < VK_API_VERSION_1_1) {
         return false;
@@ -202,7 +203,8 @@ bool pickPhysicalDevice(Engine* engine) {
         if (isDeviceSuitable(device, engine->surface, indices)) {
             engine->physicalDevice = device;
             VkPhysicalDeviceProperties deviceProperties;
-            vkGetPhysicalDeviceProperties(device, deviceProperties);
+            // DÜZELTME: İkinci argüman olarak yapının adresi (&) kullanılmalı.
+            vkGetPhysicalDeviceProperties(device, &deviceProperties);
             LOGI("Seçilen Fiziksel Cihaz: %s (Vulkan API v%d.%d.%d)",
                  deviceProperties.deviceName,
                  VK_VERSION_MAJOR(deviceProperties.apiVersion),
@@ -447,7 +449,8 @@ void android_main(struct android_app* state) {
             break;
         }
 
-        if (engine->running) {
+        // DÜZELTME: engine bir yapı (struct) olduğu için nokta (.) operatörü kullanılmalı.
+        if (engine.running) { 
             // Vulkan Çizim (vkQueueSubmit, vkQueuePresentKHR) buraya gelecek.
         }
     }

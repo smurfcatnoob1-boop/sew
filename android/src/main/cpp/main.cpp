@@ -82,8 +82,7 @@ VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>
     
     // 3. Eğer yukarıdaki popüler formatların hiçbiri bulunamazsa, 
     // sistemin sunduğu İLK formatı (muhtemelen format 56) kullanmaya geri dön.
-    // Bu risklidir ancak zorunluluktan yapılıyor.
-    LOGI("Seçilen SwapChain Formatı: Cihazın İlk Sunduğu Format (Format 56 olabilir)");
+    LOGI("Seçilen SwapChain Formatı: Cihazın İlk Sunduğu Format");
     return availableFormats[0];
 }
 
@@ -94,23 +93,33 @@ VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& avai
 }
 
 // Swap Chain Kapsamını Seçme (Ekran Çözünürlüğü)
+// KRİTİK DÜZELTME: Hata (4x4) aldığı için boyutu 1x1 olarak zorluyoruz.
 VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, ANativeWindow* window) {
-    if (capabilities.currentExtent.width != UINT32_MAX) {
-        return capabilities.currentExtent;
-    } else {
-        int32_t width = ANativeWindow_getWidth(window);
-        int32_t height = ANativeWindow_getHeight(window);
+    // Cihazınızın yaşadığı Gralloc (4x4) boyut hatasını atlamak için
+    // boyutu 1x1 olarak zorluyoruz. Bu, sadece Swapchain'i kurmak içindir.
+    VkExtent2D actualExtent = {
+        static_cast<uint32_t>(1),
+        static_cast<uint32_t>(1)
+    };
+    LOGI("Swap Chain Kapsamı Zorla 1x1 Yapıldı (Gralloc Hatasını Atlamak İçin).");
 
-        VkExtent2D actualExtent = {
-            static_cast<uint32_t>(width),
-            static_cast<uint32_t>(height)
-        };
-        // std::clamp yerine std::max ve std::min kullanarak uyumluluğu sağlıyoruz.
-        actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
-        actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
-
-        return actualExtent;
-    }
+    // Normalde burası aşağıdaki gibi olmalıydı:
+    // if (capabilities.currentExtent.width != UINT32_MAX) {
+    //     return capabilities.currentExtent;
+    // } else {
+    //     int32_t width = ANativeWindow_getWidth(window);
+    //     int32_t height = ANativeWindow_getHeight(window);
+    //
+    //     VkExtent2D actualExtent = {
+    //         static_cast<uint32_t>(width),
+    //         static_cast<uint32_t>(height)
+    //     };
+    //     actualExtent.width = std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, actualExtent.width));
+    //     actualExtent.height = std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, actualExtent.height));
+    //
+    //     return actualExtent;
+    // }
+    return actualExtent;
 }
 
 // Swap Chain Desteklerini Sorgulama

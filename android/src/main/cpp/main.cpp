@@ -1,5 +1,5 @@
 #include <android/native_activity.h>
-#include "android_native_app_glue.h" // <<< NDK'nın Standart Include Yolu Kullanıldı
+#include "android_native_app_glue.h"
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_android.h>
 #include <android/log.h>
@@ -60,9 +60,30 @@ struct SwapChainSupportDetails {
 
 // ********************************** UTILITY FONKSİYONLARI **********************************
 
-// Swap Chain Yüzey Formatını Seçme (Evrensel Uyumlu Revizyon: Cihazın ilk önerisini kullan)
+// Swap Chain Yüzey Formatını Seçme (KRİTİK DÜZELTME: Güvenilir formatı zorla seçme)
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
-    // Cihazın Surface ile uyumlu olarak sunduğu İLK formatı koşulsuz kullan.
+    // 1. ADRENO ve Android cihazlar için en yaygın ve güvenilir formatı arayın (B8G8R8A8_UNORM + SRGB renk alanı).
+    for (const auto& availableFormat : availableFormats) {
+        if (availableFormat.format == VK_FORMAT_B8G8R8A8_UNORM &&
+            availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            LOGI("Seçilen SwapChain Formatı: VK_FORMAT_B8G8R8A8_UNORM");
+            return availableFormat;
+        }
+    }
+
+    // 2. Eğer ilk tercih edilemiyorsa, alternatif olarak R8G8B8A8_UNORM formatını arayın.
+    for (const auto& availableFormat : availableFormats) {
+        if (availableFormat.format == VK_FORMAT_R8G8B8A8_UNORM &&
+            availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
+            LOGI("Seçilen SwapChain Formatı: VK_FORMAT_R8G8B8A8_UNORM (Alternatif)");
+            return availableFormat;
+        }
+    }
+    
+    // 3. Eğer yukarıdaki popüler formatların hiçbiri bulunamazsa, 
+    // sistemin sunduğu İLK formatı (muhtemelen format 56) kullanmaya geri dön.
+    // Bu risklidir ancak zorunluluktan yapılıyor.
+    LOGI("Seçilen SwapChain Formatı: Cihazın İlk Sunduğu Format (Format 56 olabilir)");
     return availableFormats[0];
 }
 
@@ -290,7 +311,7 @@ bool createSwapChain(Engine* engine) {
         createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     }
 
-    // UYUMSUZLUK DÜZELTMESİ: Dönüşümü cihazdan istemek yerine IDENTITY olarak sabitliyoruz.
+    // UYUMSUZLUK DÜZELTMESİ: Dönüşümü IDENTITY olarak sabitliyoruz.
     createInfo.preTransform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR; 
     createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
     createInfo.presentMode = presentMode;

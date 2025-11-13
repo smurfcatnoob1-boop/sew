@@ -1,3 +1,5 @@
+
+
 #include <android/native_activity.h>
 #include "android_native_app_glue.h"
 #include <vulkan/vulkan.h>
@@ -450,7 +452,8 @@ bool createGraphicsPipeline(Engine* engine) {
     scissor.extent = engine->swapchainExtent;
 
     VkPipelineViewportStateCreateInfo viewportState{};
-    viewportState.sType = VK_STRUCTURE_TYPE_VK_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    // DÜZELTME 1: Hatalı 'VK_STRUCTURE_TYPE_VK_PIPELINE_VIEWPORT_STATE_CREATE_INFO' yerine doğru isim kullanıldı.
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
     viewportState.viewportCount = 1;
     viewportState.pViewports = &viewport;
     viewportState.scissorCount = 1;
@@ -458,7 +461,8 @@ bool createGraphicsPipeline(Engine* engine) {
 
     // 4. Rasterizasyon (RTX için poligon modu VK_POLYGON_MODE_FILL kalır)
     VkPipelineRasterizationStateCreateInfo rasterizer{};
-    rasterizer.sType = VK_STRUCTURE_TYPE_VK_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    // DÜZELTME 2: Hatalı 'VK_STRUCTURE_TYPE_VK_PIPELINE_RASTERIZATION_STATE_CREATE_INFO' yerine doğru isim kullanıldı.
+    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
     rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
     rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
     rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
@@ -470,14 +474,16 @@ bool createGraphicsPipeline(Engine* engine) {
     colorBlendAttachment.blendEnable = VK_FALSE; 
 
     VkPipelineColorBlendStateCreateInfo colorBlending{};
-    colorBlending.sType = VK_STRUCTURE_TYPE_VK_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    // DÜZELTME 3: Hatalı 'VK_STRUCTURE_TYPE_VK_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO' yerine doğru isim kullanıldı.
+    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
     colorBlending.logicOpEnable = VK_FALSE;
     colorBlending.attachmentCount = 1;
     colorBlending.pAttachments = &colorBlendAttachment;
     
     // 6. Multisampling (Kenar Yumuşatma)
     VkPipelineMultisampleStateCreateInfo multisampling{};
-    multisampling.sType = VK_STRUCTURE_TYPE_VK_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    // DÜZELTME 4: Hatalı 'VK_STRUCTURE_TYPE_VK_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO' yerine doğru isim kullanıldı.
+    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
     multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; // Şimdilik 1x
 
     // 7. Pipeline Oluşturma

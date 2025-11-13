@@ -60,25 +60,16 @@ struct SwapChainSupportDetails {
 
 // ********************************** UTILITY FONKSİYONLARI **********************************
 
-// Swap Chain Yüzey Formatını Seçme (Evrensel Uyumlu Revizyon)
+// Swap Chain Yüzey Formatını Seçme (Evrensel Uyumlu Revizyon: Cihazın ilk önerisini kullan)
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
-    // Cihazın sunduğu ilk formatı kullanmak, en yaygın uyumluluk hatası olan Format/ColorSpace
-    // eşleşme sorunlarını (Adreno hataları gibi) büyük ölçüde ortadan kaldırır.
-    if (availableFormats.empty()) {
-        // Bu durum olası değil, çünkü SwapChainSupportDetails zaten formatların boş olmadığını kontrol ediyor.
-        // Ama yine de güvenli dönüş için burayı bıraktık.
-        // Bir hata fırlatmak daha uygun olabilir, ancak şimdilik varsayalım ki daima bir format var.
-    }
+    // Cihazın Surface ile uyumlu olarak sunduğu İLK formatı koşulsuz kullan.
     return availableFormats[0];
 }
 
-// Swap Chain Sunum Modunu Seçme
+// Swap Chain Sunum Modunu Seçme (Daha Konservatif Revizyon)
 VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
-    for (const auto& availablePresentMode : availablePresentModes) {
-        if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
-            return availablePresentMode;
-        }
-    }
+    // Tüm cihazlarda desteklenmesi zorunlu olan ve en güvenilir mod olan FIFO'yu tercih et.
+    // Düşük seviye hataları önlemek için MAILBOX aramasını kaldırıyoruz.
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
@@ -265,7 +256,7 @@ bool createLogicalDevice(Engine* engine) {
     return true;
 }
 
-// Swap Chain Oluşturma
+// Swap Chain Oluşturma (Revize Edilmiş)
 bool createSwapChain(Engine* engine) {
     SwapChainSupportDetails swapChainSupport = querySwapChainSupport(engine->physicalDevice, engine->surface);
 
@@ -273,15 +264,17 @@ bool createSwapChain(Engine* engine) {
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
     VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities, engine->app->window);
 
-    uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
-    if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
-        imageCount = swapChainSupport.capabilities.maxImageCount;
-    }
+    // Swap Chain Image Count: Maksimum uyumluluk için sadece minimum görüntü sayısını iste.
+    uint32_t imageCount = swapChainSupport.capabilities.minImageCount; 
+    
+    // Güvenlik: minImageCount 0 olamaz, ancak maxImageCount > 0 ise 
+    // talep edilen sayı maxImageCount'u geçmemeli (burada zaten min olduğu için bu kontrol gereksiz).
+    // Ancak boş kalan slotlar yüzünden hata olmaması için fazladan 1 resim isteme kuralını kaldırdık.
 
     VkSwapchainCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     createInfo.surface = engine->surface;
-    createInfo.minImageCount = imageCount;
+    createInfo.minImageCount = imageCount; // minImageCount'a ayarladık
     createInfo.imageFormat = surfaceFormat.format;
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
     createInfo.imageExtent = extent;
@@ -310,6 +303,7 @@ bool createSwapChain(Engine* engine) {
         return false;
     }
 
+    // Gerçekte kaç görüntü oluşturulduğunu alıyoruz (minImageCount'tan az olmamalı)
     vkGetSwapchainImagesKHR(engine->device, engine->swapchain, &imageCount, nullptr);
     engine->swapchainImages.resize(imageCount);
     vkGetSwapchainImagesKHR(engine->device, engine->swapchain, &imageCount, engine->swapchainImages.data());

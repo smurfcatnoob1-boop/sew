@@ -1,849 +1,480 @@
 
 
-#include <android/native_activity.h>
-#include "android_native_app_glue.h"
-#include <vulkan/vulkan.h>
-#include <vulkan/vulkan_android.h>
 #include <android/log.h>
+#include <android_native_app_glue.h>
+#include <android/native_window.h> // Yeni ekledik
+#include <jni.h>
+
+#include <vulkan/vulkan.h>
 #include <vector>
-#include <set>
-#include <algorithm>
-#include <stdexcept>
 #include <string>
-#include <EGL/egl.h> // GLES Fallback
-#include <GLES3/gl3.h> // GLES Fallback
 
-#define LOG_TAG "HybridEngine"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+// Hata ayıklama ve bilgi için kolaylık sağlamak amacıyla log macro'ları
+#define LOGI(...) ((void)__android_log_print(ANDROID_LOG_INFO, "HybridEngine", __VA_ARGS__))
+#define LOGW(...) ((void)__android_log_print(ANDROID_LOG_WARN, "HybridEngine", __VA_ARGS__))
+#define LOGE(...) ((void)__android_log_print(ANDROID_LOG_ERROR, "HybridEngine", __VA_ARGS__))
 
-// **************************** UZANTILAR VE TEMEL YAPILAR ****************************
-
-// Vulkan 1.2 Desteğini zorlamak yerine 1.1'i deneyeceğiz (Daha fazla cihaz uyumluluğu için)
-const uint32_t MIN_VULKAN_API_VERSION = VK_API_VERSION_1_1; 
-
-const std::vector<const char*> deviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME, // KRİTİK: Android'de görüntülemek için zorunlu
-};
-
-struct SwapChainSupportDetails {
-    VkSurfaceCapabilitiesKHR capabilities;
-    std::vector<VkSurfaceFormatKHR> formats;
-    std::vector<VkPresentModeKHR> presentModes;
-};
-
-struct QueueFamilyIndices {
-    int graphicsFamily = -1;
-    int presentFamily = -1;
-    bool isComplete() {
-        return graphicsFamily != -1 && presentFamily != -1;
-    }
-};
-
+// Vulkan Motorumuzun Ana Yapısı
 struct Engine {
     struct android_app* app;
-    bool running = false;
-    bool is_vulkan = false; // true ise Vulkan, false ise GLES
+    bool animating;
 
-    // Vulkan Çekirdek Nesneleri
-    VkInstance vkInstance = VK_NULL_HANDLE;
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    VkDevice device = VK_NULL_HANDLE;
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
-    VkQueue graphicsQueue = VK_NULL_HANDLE;
-    VkQueue presentQueue = VK_NULL_HANDLE;
-    VkCommandPool commandPool = VK_NULL_HANDLE;
+    // Vulkan nesneleri
+    VkInstance instance;
+    VkPhysicalDevice physicalDevice;
+    VkDevice device;
+    VkQueue graphicsQueue;
+    
+    // Swap Chain nesneleri
+    VkSurfaceKHR surface;
+    VkSwapchainKHR swapChain;
+    std::vector<VkImage> swapChainImages;
+    VkFormat swapChainImageFormat;
+    VkExtent2D swapChainExtent;
+    std::vector<VkImageView> swapChainImageViews;
 
-    // Vulkan Grafik Pipeline Nesneleri
-    VkSwapchainKHR swapchain = VK_NULL_HANDLE;
-    std::vector<VkImage> swapchainImages;
-    std::vector<VkImageView> swapchainImageViews;
-    std::vector<VkFramebuffer> swapchainFramebuffers;
+    // Render Pipeline nesneleri (Şimdilik yorum satırında)
+    // VkRenderPass renderPass;
+    // VkPipelineLayout pipelineLayout;
+    // VkPipeline graphicsPipeline;
+    // std::vector<VkFramebuffer> swapChainFramebuffers;
+    
+    // Komut tamponları
+    VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
-    VkFormat swapchainImageFormat;
-    VkExtent2D swapchainExtent;
-    VkRenderPass renderPass = VK_NULL_HANDLE;
-    
-    // YENİ EKLENDİ: GRAFİK PIPELINE TEMELLERİ
-    VkPipelineLayout pipelineLayout = VK_NULL_HANDLE; 
-    VkPipeline graphicsPipeline = VK_NULL_HANDLE;
-    // YENİ EKLENDİ SONU
-
-    // Vulkan Senkronizasyon
-    VkSemaphore imageAvailableSemaphore = VK_NULL_HANDLE;
-    VkSemaphore renderFinishedSemaphore = VK_NULL_HANDLE;
-    VkFence inFlightFence = VK_NULL_HANDLE;
-
-    // GLES Nesneleri (Fallback için)
-    EGLDisplay glesDisplay = EGL_NO_DISPLAY;
-    EGLSurface glesSurface = EGL_NO_SURFACE;
-    EGLContext glesContext = EGL_NO_CONTEXT;
-    
-    // YENİ: DİNAMİK OPTİMİZASYON VE OYUN MANTIĞI AYARLARI
-    float graphics_quality = 1.0f; // 1.0 = Max kalite. 0.0 = Min kalite. FPS'e göre ayarlanacak.
-    float day_night_cycle_time = 0.0f; // Gündüz/gece döngüsü için zamanlayıcı (UBO ile GPU'ya gönderilecek)
-    bool is_girl_character = false; // Kullanıcı seçimini tutar.
 };
 
-// ********************************** VULKAN UTILITY FONKSİYONLARI **********************************
+// -----------------------------------------------------------------------------
+// VULKAN BAŞLATMA FONKSİYONLARI
+// -----------------------------------------------------------------------------
 
-// Swap Chain Desteklerini Sorgulama
-SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device, VkSurfaceKHR surface) {
-    SwapChainSupportDetails details;
-    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
-    // ... format ve present mode sorgulamaları
-    uint32_t formatCount;
-    vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
-    if (formatCount != 0) {
-        details.formats.resize(formatCount);
-        vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
-    }
-    uint32_t presentModeCount;
-    vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
-    if (presentModeCount != 0) {
-        details.presentModes.resize(presentModeCount);
-        vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
-    }
-    return details;
-}
-
-// Yüksek Kaliteli Formatı Seçme (SRGB)
-VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
-    for (const auto& availableFormat : availableFormats) {
-        // Yüksek kaliteli PBR için VK_FORMAT_B8G8R8A8_SRGB tercih edelim
-        if (availableFormat.format == VK_FORMAT_B8G8R8A8_SRGB &&
-            availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-            return availableFormat;
-        }
-    }
-    // Geri kalan en uygun format
-    return availableFormats[0];
-}
-
-// Düşük Gecikmeli Sunum Modunu Seçme (Mailbox, Yoksa Fifo)
-VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
-    for (const auto& availablePresentMode : availablePresentModes) {
-        if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
-            return availablePresentMode;
-        }
-    }
-    return VK_PRESENT_MODE_FIFO_KHR; // En güvenli mod
-}
-
-// KRİTİK: GRALLOC BUG'I İÇİN BOYUTU ZORLA 1x1 YAPMA VEYA PENCERE BOYUTUNU KULLANMA
-VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, ANativeWindow* window) {
-    // Normal mantık (Eski kodunuzdan)
-    if (capabilities.currentExtent.width != UINT32_MAX) {
-        return capabilities.currentExtent;
-    } 
-    // Gralloc Hilesi: Zorla 1x1 olarak kullanacağız. Bu, ANativeWindow_setBuffersGeometry ile birlikte çalışır.
-    VkExtent2D actualExtent = {
-        static_cast<uint32_t>(1),
-        static_cast<uint32_t>(1)
-    };
-    LOGI("Swap Chain Kapsamı zorla 1x1 Yapıldı (Gralloc Hilesi).");
-    return actualExtent;
-}
-
-bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
-    uint32_t extensionCount = 0;
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
-    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
-    std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
-    for (const auto& extension : availableExtensions) {
-        requiredExtensions.erase(extension.extensionName);
-    }
-    return requiredExtensions.empty();
-}
-
-QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) {
-    QueueFamilyIndices indices;
-    uint32_t queueFamilyCount = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-    vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
-    int i = 0;
-    for (const auto& queueFamily : queueFamilies) {
-        if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) { indices.graphicsFamily = i; }
-        VkBool32 presentSupport = false;
-        vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
-        if (presentSupport) { indices.presentFamily = i; }
-        if (indices.isComplete()) { break; }
-        i++;
-    }
-    return indices;
-}
-
-// KRİTİK DÜZELTME: isDeviceSuitable'da pointer hatası düzeltildi
-bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, QueueFamilyIndices& indices) {
-    VkPhysicalDeviceProperties deviceProperties;
-    // DÜZELTME: Yapıya veri yazmak için adres operatörü (&) kullanıldı.
-    vkGetPhysicalDeviceProperties(device, &deviceProperties); 
-
-    if (deviceProperties.apiVersion < MIN_VULKAN_API_VERSION) { 
-        LOGI("Cihaz Vulkan v%d.%d desteği sunuyor, minimum v%d.%d gerekiyor.",
-             VK_VERSION_MAJOR(deviceProperties.apiVersion), VK_VERSION_MINOR(deviceProperties.apiVersion),
-             VK_VERSION_MAJOR(MIN_VULKAN_API_VERSION), VK_VERSION_MINOR(MIN_VULKAN_API_VERSION));
-        return false; 
-    }
-
-    indices = findQueueFamilies(device, surface);
-    bool extensionsSupported = checkDeviceExtensionSupport(device);
-    bool swapChainAdequate = false;
-    if (extensionsSupported) {
-        SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device, surface);
-        swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
-    }
-    return extensionsSupported && swapChainAdequate && indices.isComplete();
-}
-
-// **************************** VULKAN BAŞLATMA ZİNCİRİ **********************************
-
-bool createInstanceAndSurface(Engine* engine) {
+/**
+ * Vulkan Instance'ı oluşturur.
+ */
+bool createInstance(Engine* engine) {
+    LOGI("Vulkan: Instance oluşturuluyor...");
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-    appInfo.pApplicationName = "SevgiliOyunu_Vulkan_PBR";
-    appInfo.apiVersion = MIN_VULKAN_API_VERSION; // Minimum 1.1'i hedefliyoruz
+    appInfo.pApplicationName = "Vulkan PBR Engine";
+    appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.pEngineName = "HybridEngine";
+    appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
+    appInfo.apiVersion = VK_API_VERSION_1_0;
+
     VkInstanceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
-    const std::vector<const char*> instanceExtensions = { VK_KHR_SURFACE_EXTENSION_NAME, VK_KHR_ANDROID_SURFACE_EXTENSION_NAME };
+
+    // Gerekli uzantıları al (VK_KHR_android_surface ve VK_KHR_surface zorunlu)
+    std::vector<const char*> instanceExtensions = {
+        "VK_KHR_surface",
+        "VK_KHR_android_surface"
+    };
     createInfo.enabledExtensionCount = static_cast<uint32_t>(instanceExtensions.size());
     createInfo.ppEnabledExtensionNames = instanceExtensions.data();
-    if (vkCreateInstance(&createInfo, nullptr, &engine->vkInstance) != VK_SUCCESS) { LOGE("Vulkan Instance oluşturulamadı!"); return false; }
+    
+    // Geçerlilik katmanlarını devre dışı bırakıyoruz (Daha sonra eklenebilir)
+    createInfo.enabledLayerCount = 0;
 
-    VkAndroidSurfaceCreateInfoKHR surfaceCreateInfo{};
-    surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
-    surfaceCreateInfo.window = engine->app->window;
-
-    if (vkCreateAndroidSurfaceKHR(engine->vkInstance, &surfaceCreateInfo, nullptr, &engine->surface) != VK_SUCCESS) { LOGE("Vulkan Surface oluşturulamadı!"); return false; }
-    LOGI("Vulkan Instance ve Surface Başarıyla Oluşturuldu.");
+    if (vkCreateInstance(&createInfo, nullptr, &engine->instance) != VK_SUCCESS) {
+        LOGE("VULKAN HATA: Instance oluşturulamadı!");
+        return false;
+    }
+    LOGI("Vulkan: Instance başarıyla oluşturuldu.");
     return true;
 }
 
-// KRİTİK DÜZELTME: pickPhysicalDevice'da pointer hatası düzeltildi
+/**
+ * Android Native Window için Vulkan Surface'ı oluşturur.
+ */
+bool createSurface(Engine* engine) {
+    LOGI("Vulkan: Surface oluşturuluyor...");
+    VkAndroidSurfaceCreateInfoKHR createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR;
+    createInfo.pNext = nullptr;
+    createInfo.flags = 0;
+    createInfo.window = engine->app->window;
+
+    if (vkCreateAndroidSurfaceKHR(engine->instance, &createInfo, nullptr, &engine->surface) != VK_SUCCESS) {
+        LOGE("VULKAN HATA: Vulkan Surface (Pencere Yüzeyi) oluşturulamadı!");
+        return false;
+    }
+    LOGI("Vulkan: Surface başarıyla oluşturuldu.");
+    return true;
+}
+
+/**
+ * Fiziksel Cihazı (GPU) seçer.
+ */
 bool pickPhysicalDevice(Engine* engine) {
     uint32_t deviceCount = 0;
-    vkEnumeratePhysicalDevices(engine->vkInstance, &deviceCount, nullptr);
-    if (deviceCount == 0) { LOGE("Vulkan uyumlu cihaz bulunamadı!"); return false; }
-    std::vector<VkPhysicalDevice> devices(deviceCount);
-    vkEnumeratePhysicalDevices(engine->vkInstance, &deviceCount, devices.data());
-    for (const auto& device : devices) {
-        QueueFamilyIndices indices;
-        if (isDeviceSuitable(device, engine->surface, indices)) {
-            engine->physicalDevice = device;
-            VkPhysicalDeviceProperties deviceProperties;
-            // DÜZELTME: Yapıya veri yazmak için adres operatörü (&) kullanıldı.
-            vkGetPhysicalDeviceProperties(device, &deviceProperties);
-            LOGI("Seçilen Fiziksel Cihaz: %s", deviceProperties.deviceName);
-            return true;
-        }
-    }
-    LOGE("Uygun Vulkan 1.1 cihaz bulunamadı!");
-    return false;
-}
+    vkEnumeratePhysicalDevices(engine->instance, &deviceCount, nullptr);
 
-bool createLogicalDevice(Engine* engine) {
-    // ... (Mantık aynı)
-    QueueFamilyIndices indices = findQueueFamilies(engine->physicalDevice, engine->surface);
-    std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-    std::set<int> uniqueQueueFamilies = {indices.graphicsFamily, indices.presentFamily};
-    float queuePriority = 1.0f;
-    for (int queueFamily : uniqueQueueFamilies) {
-        VkDeviceQueueCreateInfo queueCreateInfo{};
-        queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-        queueCreateInfo.queueFamilyIndex = queueFamily;
-        queueCreateInfo.queueCount = 1;
-        queueCreateInfo.pQueuePriorities = &queuePriority;
-        queueCreateInfos.push_back(queueCreateInfo);
+    if (deviceCount == 0) {
+        LOGE("VULKAN HATA: Vulkan destekleyen cihaz (GPU) bulunamadı!");
+        return false;
     }
-    VkPhysicalDeviceFeatures deviceFeatures{};
-    VkDeviceCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-    createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
-    createInfo.pQueueCreateInfos = queueCreateInfos.data();
-    createInfo.pEnabledFeatures = &deviceFeatures;
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-    if (vkCreateDevice(engine->physicalDevice, &createInfo, nullptr, &engine->device) != VK_SUCCESS) {
-        LOGE("Logical Device oluşturulamadı!"); return false;
-    }
-    vkGetDeviceQueue(engine->device, indices.graphicsFamily, 0, &engine->graphicsQueue);
-    vkGetDeviceQueue(engine->device, indices.presentFamily, 0, &engine->presentQueue);
-    LOGI("Logical Device ve Queues Başarıyla Oluşturuldu.");
+
+    std::vector<VkPhysicalDevice> devices(deviceCount);
+    vkEnumeratePhysicalDevices(engine->instance, &deviceCount, devices.data());
+
+    // Basitçe ilk bulduğumuz cihazı seçiyoruz
+    engine->physicalDevice = devices[0];
+    VkPhysicalDeviceProperties deviceProperties;
+    vkGetPhysicalDeviceProperties(engine->physicalDevice, &deviceProperties);
+    LOGI("Vulkan: Seçilen Cihaz: %s", deviceProperties.deviceName);
     return true;
 }
 
+/**
+ * Mantıksal Cihazı ve Grafik Kuyruğunu oluşturur.
+ */
+bool createLogicalDevice(Engine* engine) {
+    // Grafik Kuyruğu Ailesini Bul
+    uint32_t queueFamilyCount = 0;
+    vkGetPhysicalDeviceQueueFamilyProperties(engine->physicalDevice, &queueFamilyCount, nullptr);
+    std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+    vkGetPhysicalDeviceQueueFamilyProperties(engine->physicalDevice, &queueFamilyCount, queueFamilies.data());
+
+    uint32_t graphicsQueueFamilyIndex = (uint32_t)-1;
+    for (uint32_t i = 0; i < queueFamilyCount; i++) {
+        // Hem grafik hem de yüzey desteği olan kuyruğu bul
+        VkBool32 presentSupport = false;
+        vkGetPhysicalDeviceSurfaceSupportKHR(engine->physicalDevice, i, engine->surface, &presentSupport);
+
+        if (queueFamilies[i].queueFlags & VK_QUEUE_GRAPHICS_BIT && presentSupport) {
+            graphicsQueueFamilyIndex = i;
+            break;
+        }
+    }
+
+    if (graphicsQueueFamilyIndex == (uint32_t)-1) {
+        LOGE("VULKAN HATA: Grafik ve Sunum (Present) desteği olan Kuyruk Ailesi bulunamadı!");
+        return false;
+    }
+
+    // Mantıksal Cihazı Oluştur
+    VkDeviceQueueCreateInfo queueCreateInfo{};
+    queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+    queueCreateInfo.queueFamilyIndex = graphicsQueueFamilyIndex;
+    queueCreateInfo.queueCount = 1;
+    float queuePriority = 1.0f;
+    queueCreateInfo.pQueuePriorities = &queuePriority;
+
+    VkPhysicalDeviceFeatures deviceFeatures{}; // Özellikleri etkinleştirmiyoruz (şimdilik)
+
+    VkDeviceCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+    createInfo.pQueueCreateInfos = &queueCreateInfo;
+    createInfo.queueCreateInfoCount = 1;
+    createInfo.pEnabledFeatures = &deviceFeatures;
+
+    // Gerekli cihaz uzantıları (Swap Chain zorunlu)
+    const std::vector<const char*> deviceExtensions = {
+        VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    };
+    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
+    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
+
+    // Cihazı oluştur
+    if (vkCreateDevice(engine->physicalDevice, &createInfo, nullptr, &engine->device) != VK_SUCCESS) {
+        LOGE("VULKAN HATA: Mantıksal Cihaz oluşturulamadı!");
+        return false;
+    }
+
+    // Grafik Kuyruğunu al
+    vkGetDeviceQueue(engine->device, graphicsQueueFamilyIndex, 0, &engine->graphicsQueue);
+    LOGI("Vulkan: Mantıksal Cihaz ve Grafik Kuyruğu başarıyla oluşturuldu.");
+    return true;
+}
+
+/**
+ * Swap Chain'i oluşturur. (Çizim yapılabilmesi için gereken resim serisi)
+ */
 bool createSwapChain(Engine* engine) {
-    // ... (Mantık aynı)
-    SwapChainSupportDetails swapChainSupport = querySwapChainSupport(engine->physicalDevice, engine->surface);
-    VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
-    VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
-    VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities, engine->app->window);
-    uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
-    if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
-        imageCount = swapChainSupport.capabilities.maxImageCount;
+    // 1. Yüzey Özelliklerini (Surface Capabilities) sorgula
+    VkSurfaceCapabilitiesKHR capabilities;
+    vkGetPhysicalDeviceSurfaceCapabilitiesKHR(engine->physicalDevice, engine->surface, &capabilities);
+
+    // 2. Yüzey Formatını (Surface Format) seç
+    uint32_t formatCount;
+    vkGetPhysicalDeviceSurfaceFormatsKHR(engine->physicalDevice, engine->surface, &formatCount, nullptr);
+    std::vector<VkSurfaceFormatKHR> availableFormats(formatCount);
+    vkGetPhysicalDeviceSurfaceFormatsKHR(engine->physicalDevice, engine->surface, &formatCount, availableFormats.data());
+
+    VkSurfaceFormatKHR surfaceFormat = availableFormats[0]; // Basitçe ilk formatı seç
+    engine->swapChainImageFormat = surfaceFormat.format;
+
+    // 3. Takas Uzantısını (Swap Extent - Çözünürlük) ayarla
+    engine->swapChainExtent = capabilities.currentExtent;
+    if (capabilities.currentExtent.width == (uint32_t)-1) {
+        // Eğer çözünürlük tanımsızsa, pencerenin boyutlarını kullan
+        engine->swapChainExtent.width = ANativeWindow_getWidth(engine->app->window);
+        engine->swapChainExtent.height = ANativeWindow_getHeight(engine->app->window);
     }
     
+    // 4. Gerekli Resim Sayısını belirle (Minimum + 1)
+    uint32_t imageCount = capabilities.minImageCount + 1;
+    if (capabilities.maxImageCount > 0 && imageCount > capabilities.maxImageCount) {
+        imageCount = capabilities.maxImageCount;
+    }
+
+    // 5. Swap Chain Oluşturma Bilgilerini ayarla
     VkSwapchainCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
     createInfo.surface = engine->surface;
     createInfo.minImageCount = imageCount;
     createInfo.imageFormat = surfaceFormat.format;
     createInfo.imageColorSpace = surfaceFormat.colorSpace;
-    createInfo.imageExtent = extent;
+    createInfo.imageExtent = engine->swapChainExtent;
     createInfo.imageArrayLayers = 1;
-    // VK_IMAGE_USAGE_TRANSFER_DST_BIT eklenerek Render Pass dışındaki çizimlere izin verilir (Işın İzleme/Görüntü İşleme için iyi)
-    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT; 
+    createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT; // Doğrudan renklendirme için
+    
+    // Kuyruk Paylaşım Modu (Tek kuyruk kullandığımız için Exclusive)
+    createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    createInfo.preTransform = capabilities.currentTransform;
+    createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR; // Diğer pencerelerle karışım olmasın
+    createInfo.presentMode = VK_PRESENT_MODE_FIFO_KHR; // V-Sync
+    createInfo.clipped = VK_TRUE; // Çizilmeyen piksellerle uğraşma
+    createInfo.oldSwapchain = VK_NULL_HANDLE; // Yeniden oluşturulmadığı için boş
 
-    QueueFamilyIndices indices = findQueueFamilies(engine->physicalDevice, engine->surface);
-    uint32_t queueFamilyIndices[] = {(uint32_t)indices.graphicsFamily, (uint32_t)indices.presentFamily};
-
-    if (indices.graphicsFamily != indices.presentFamily) {
-        createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-        createInfo.queueFamilyIndexCount = 2;
-        createInfo.pQueueFamilyIndices = queueFamilyIndices;
-    } else {
-        createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-    }
-
-    // KRİTİK DÜZELTME: Transform'u zorla IDENTITY yapmak yerine, cihazın önerdiği dönüşümü kullanıyoruz.
-    // Bu, bazı cihazlardaki (özellikle Adreno) hatalı rotasyon/çökme sorununu çözebilir.
-    createInfo.preTransform = swapChainSupport.capabilities.currentTransform; 
-    createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    createInfo.presentMode = presentMode;
-    createInfo.clipped = VK_TRUE;
-    createInfo.oldSwapchain = VK_NULL_HANDLE;
-
-    if (vkCreateSwapchainKHR(engine->device, &createInfo, nullptr, &engine->swapchain) != VK_SUCCESS) {
-        LOGE("KRİTİK HATA: Swap Chain oluşturulamadı!"); 
+    // Swap Chain'i oluştur
+    if (vkCreateSwapchainKHR(engine->device, &createInfo, nullptr, &engine->swapChain) != VK_SUCCESS) {
+        LOGE("VULKAN HATA: Swap Chain oluşturulamadı!");
         return false;
     }
 
-    vkGetSwapchainImagesKHR(engine->device, engine->swapchain, &imageCount, nullptr);
-    engine->swapchainImages.resize(imageCount);
-    vkGetSwapchainImagesKHR(engine->device, engine->swapchain, &imageCount, engine->swapchainImages.data());
-
-    engine->swapchainImageFormat = surfaceFormat.format;
-    engine->swapchainExtent = extent;
-
-    LOGI("Swap Chain (%dx%d) Başarıyla Oluşturuldu.", extent.width, extent.height);
+    // Swap Chain resimlerini al
+    vkGetSwapchainImagesKHR(engine->device, engine->swapChain, &imageCount, nullptr);
+    engine->swapChainImages.resize(imageCount);
+    vkGetSwapchainImagesKHR(engine->device, engine->swapChain, &imageCount, engine->swapChainImages.data());
+    
+    LOGI("Vulkan: Swap Chain başarıyla oluşturuldu. Resim Sayısı: %d", imageCount);
     return true;
 }
 
+/**
+ * Swap Chain Resimleri için Görüntü Görünümlerini (Image Views) oluşturur.
+ */
 bool createImageViews(Engine* engine) {
-    engine->swapchainImageViews.resize(engine->swapchainImages.size());
-    for (size_t i = 0; i < engine->swapchainImages.size(); i++) {
+    engine->swapChainImageViews.resize(engine->swapChainImages.size());
+
+    for (size_t i = 0; i < engine->swapChainImages.size(); i++) {
         VkImageViewCreateInfo createInfo{};
         createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        createInfo.image = engine->swapchainImages[i];
+        createInfo.image = engine->swapChainImages[i];
         createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-        createInfo.format = engine->swapchainImageFormat;
+        createInfo.format = engine->swapChainImageFormat;
+        
+        // Renk bileşen eşleştirmesi
+        createInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+        createInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+        // Resim alt kaynağı aralığı
         createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         createInfo.subresourceRange.baseMipLevel = 0;
         createInfo.subresourceRange.levelCount = 1;
         createInfo.subresourceRange.baseArrayLayer = 0;
         createInfo.subresourceRange.layerCount = 1;
 
-        if (vkCreateImageView(engine->device, &createInfo, nullptr, &engine->swapchainImageViews[i]) != VK_SUCCESS) {
-            LOGE("Image View oluşturulamadı!"); return false;
+        if (vkCreateImageView(engine->device, &createInfo, nullptr, &engine->swapChainImageViews[i]) != VK_SUCCESS) {
+            LOGE("VULKAN HATA: %zu. Image View oluşturulamadı!", i);
+            return false;
         }
     }
+    LOGI("Vulkan: Tüm Image View'lar başarıyla oluşturuldu.");
     return true;
 }
 
-bool createRenderPass(Engine* engine) {
-    // ... (Mantık aynı)
-    VkAttachmentDescription colorAttachment{};
-    colorAttachment.format = engine->swapchainImageFormat;
-    colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
-    colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR; 
-    colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; 
-    colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+// -----------------------------------------------------------------------------
+// TEMİZLEME FONKSİYONLARI
+// -----------------------------------------------------------------------------
 
-    VkAttachmentReference colorAttachmentRef{};
-    colorAttachmentRef.attachment = 0;
-    colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+/**
+ * Vulkan nesnelerini temizler.
+ */
+void engine_term_display(Engine* engine) {
+    engine->animating = false;
 
-    VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &colorAttachmentRef;
-    
-    // Gecikmeli gölgelendirme (Deferred Shading) için burada Subpass Dependency'ler olmalı.
-    VkSubpassDependency dependency{};
-    dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    dependency.dstSubpass = 0;
-    dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.srcAccessMask = 0;
-    dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-    VkRenderPassCreateInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    renderPassInfo.attachmentCount = 1;
-    renderPassInfo.pAttachments = &colorAttachment;
-    renderPassInfo.subpassCount = 1;
-    renderPassInfo.pSubpasses = &subpass;
-    renderPassInfo.dependencyCount = 1;
-    renderPassInfo.pDependencies = &dependency;
-    
-    if (vkCreateRenderPass(engine->device, &renderPassInfo, nullptr, &engine->renderPass) != VK_SUCCESS) {
-        LOGE("Render Pass oluşturulamadı!"); return false;
-    }
-    return true;
-}
-
-// YENİ EKLEME: Pipeline Layout Oluşturma
-bool createPipelineLayout(Engine* engine) {
-    // PBR ve Ray Tracing için gerekli Descriptor Set Layout'lar buraya eklenecektir.
-    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-    pipelineLayoutInfo.setLayoutCount = 0; 
-    pipelineLayoutInfo.pSetLayouts = nullptr; 
-    
-    // Shader'lara Işın İzleme ayarlarını, ışık pozisyonunu veya zamanı göndermek için Push Constant eklenebilir.
-    VkPushConstantRange pushConstantRange{};
-    pushConstantRange.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-    pushConstantRange.offset = 0;
-    pushConstantRange.size = sizeof(float) * 4; // Basit bir zaman/ayarlar constant'ı
-
-    pipelineLayoutInfo.pushConstantRangeCount = 1;
-    pipelineLayoutInfo.pPushConstantRanges = &pushConstantRange;
-
-    if (vkCreatePipelineLayout(engine->device, &pipelineLayoutInfo, nullptr, &engine->pipelineLayout) != VK_SUCCESS) {
-        LOGE("Pipeline Layout oluşturulamadı!");
-        return false;
-    }
-    LOGI("Pipeline Layout Başarıyla Oluşturuldu.");
-    return true;
-}
-
-// YENİ EKLEME: Graphics Pipeline Oluşturma
-bool createGraphicsPipeline(Engine* engine) {
-    // KRİTİK: SHADER MODÜLLERİ EKSİK. Bu fonksiyon şimdilik başarısız olacaktır, ancak yapıyı tamamlıyoruz.
-    
-    // 1. Vertex Input (GLTF'den gelecek)
-    VkPipelineVertexInputStateCreateInfo vertexInputInfo{};
-    vertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-    // ... (GLTF yüklenince vertex binding ve attribute'lar buraya gelecek)
-
-    // 2. Input Assembly
-    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
-    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST; 
-    inputAssembly.primitiveRestartEnable = VK_FALSE;
-
-    // 3. Viewport ve Scissor (Dinamik Çözünürlük İçin Ayarlanabilir)
-    VkViewport viewport{};
-    viewport.x = 0.0f;
-    viewport.y = 0.0f;
-    viewport.width = (float)engine->swapchainExtent.width;
-    viewport.height = (float)engine->swapchainExtent.height;
-    viewport.minDepth = 0.0f;
-    viewport.maxDepth = 1.0f;
-
-    VkRect2D scissor{};
-    scissor.offset = {0, 0};
-    scissor.extent = engine->swapchainExtent;
-
-    VkPipelineViewportStateCreateInfo viewportState{};
-    // DÜZELTME 1: Hatalı 'VK_STRUCTURE_TYPE_VK_PIPELINE_VIEWPORT_STATE_CREATE_INFO' yerine doğru isim kullanıldı.
-    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewportState.viewportCount = 1;
-    viewportState.pViewports = &viewport;
-    viewportState.scissorCount = 1;
-    viewportState.pScissors = &scissor;
-
-    // 4. Rasterizasyon (RTX için poligon modu VK_POLYGON_MODE_FILL kalır)
-    VkPipelineRasterizationStateCreateInfo rasterizer{};
-    // DÜZELTME 2: Hatalı 'VK_STRUCTURE_TYPE_VK_PIPELINE_RASTERIZATION_STATE_CREATE_INFO' yerine doğru isim kullanıldı.
-    rasterizer.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizer.polygonMode = VK_POLYGON_MODE_FILL;
-    rasterizer.cullMode = VK_CULL_MODE_BACK_BIT;
-    rasterizer.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    rasterizer.lineWidth = 1.0f;
-
-    // 5. Renk Karıştırma (Color Blending)
-    VkPipelineColorBlendAttachmentState colorBlendAttachment{};
-    colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-    colorBlendAttachment.blendEnable = VK_FALSE; 
-
-    VkPipelineColorBlendStateCreateInfo colorBlending{};
-    // DÜZELTME 3: Hatalı 'VK_STRUCTURE_TYPE_VK_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO' yerine doğru isim kullanıldı.
-    colorBlending.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    colorBlending.logicOpEnable = VK_FALSE;
-    colorBlending.attachmentCount = 1;
-    colorBlending.pAttachments = &colorBlendAttachment;
-    
-    // 6. Multisampling (Kenar Yumuşatma)
-    VkPipelineMultisampleStateCreateInfo multisampling{};
-    // DÜZELTME 4: Hatalı 'VK_STRUCTURE_TYPE_VK_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO' yerine doğru isim kullanıldı.
-    multisampling.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisampling.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; // Şimdilik 1x
-
-    // 7. Pipeline Oluşturma
-    VkGraphicsPipelineCreateInfo pipelineInfo{};
-    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
-    // pipelineInfo.stageCount = 2; // Yer tutucu. Shader'lar gelince açılacak.
-    // pipelineInfo.pStages = shaderStages;
-    pipelineInfo.pVertexInputState = &vertexInputInfo;
-    pipelineInfo.pInputAssemblyState = &inputAssembly;
-    pipelineInfo.pViewportState = &viewportState;
-    pipelineInfo.pRasterizationState = &rasterizer;
-    pipelineInfo.pMultisampleState = &multisampling;
-    pipelineInfo.pColorBlendState = &colorBlending;
-    pipelineInfo.layout = engine->pipelineLayout;
-    pipelineInfo.renderPass = engine->renderPass;
-    pipelineInfo.subpass = 0;
-
-    // Hata beklenir, çünkü shader modülleri (pStages) eksik.
-    if (vkCreateGraphicsPipelines(engine->device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &engine->graphicsPipeline) != VK_SUCCESS) {
-        // Bu hata beklendiği için, motorun temelini bozmadan loglayıp true dönmek mantıklı.
-        LOGE("Graphics Pipeline oluşturulamadı! (Bu, Shader Modülleri eklenene kadar normaldir)");
-        // Pipeline oluşturulmasa bile devam etmeliyiz ki, mavi ekran testi çalışsın.
-        return true; 
-    }
-    LOGI("Graphics Pipeline İskeleti Başarıyla Oluşturuldu.");
-    return true;
-}
-
-bool createFramebuffers(Engine* engine) {
-    // ... (Mantık aynı)
-    engine->swapchainFramebuffers.resize(engine->swapchainImageViews.size());
-    for (size_t i = 0; i < engine->swapchainImageViews.size(); i++) {
-        VkImageView attachments[] = { engine->swapchainImageViews[i] };
-        VkFramebufferCreateInfo framebufferInfo{};
-        framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-        framebufferInfo.renderPass = engine->renderPass;
-        framebufferInfo.attachmentCount = 1;
-        framebufferInfo.pAttachments = attachments;
-        framebufferInfo.width = engine->swapchainExtent.width;
-        framebufferInfo.height = engine->swapchainExtent.height;
-        framebufferInfo.layers = 1;
-        if (vkCreateFramebuffer(engine->device, &framebufferInfo, nullptr, &engine->swapchainFramebuffers[i]) != VK_SUCCESS) {
-            LOGE("Framebuffer oluşturulamadı!"); return false;
-        }
-    }
-    return true;
-}
-
-bool createCommandObjects(Engine* engine) {
-    // ... (Mantık aynı)
-    QueueFamilyIndices queueFamilyIndices = findQueueFamilies(engine->physicalDevice, engine->surface);
-    VkCommandPoolCreateInfo poolInfo{};
-    poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-    poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily;
-    poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-    if (vkCreateCommandPool(engine->device, &poolInfo, nullptr, &engine->commandPool) != VK_SUCCESS) { LOGE("Command Pool oluşturulamadı!"); return false; }
-    engine->commandBuffers.resize(engine->swapchainFramebuffers.size());
-    VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = engine->commandPool;
-    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    allocInfo.commandBufferCount = (uint32_t)engine->commandBuffers.size();
-    if (vkAllocateCommandBuffers(engine->device, &allocInfo, engine->commandBuffers.data()) != VK_SUCCESS) { LOGE("Command Buffers oluşturulamadı!"); return false; }
-    return true;
-}
-
-bool createSyncObjects(Engine* engine) {
-    // ... (Mantık aynı)
-    VkSemaphoreCreateInfo semaphoreInfo{};
-    semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT; 
-    if (vkCreateSemaphore(engine->device, &semaphoreInfo, nullptr, &engine->imageAvailableSemaphore) != VK_SUCCESS ||
-        vkCreateSemaphore(engine->device, &semaphoreInfo, nullptr, &engine->renderFinishedSemaphore) != VK_SUCCESS ||
-        vkCreateFence(engine->device, &fenceInfo, nullptr, &engine->inFlightFence) != VK_SUCCESS) {
-        LOGE("Senkronizasyon nesneleri oluşturulamadı!"); return false;
-    }
-    return true;
-}
-
-// **************************** GLES FALLBACK ****************************
-
-// GLES Fallback fonksiyonları (Aynı kaldı)
-bool init_gles_fallback(Engine* engine) {
-    // ... (GLES Başlatma mantığı)
-    if (engine->app->window == NULL) { LOGE("GLES: Pencere başlatılmadı!"); return false; }
-    
-    engine->glesDisplay = eglGetDisplay(EGL_DEFAULT_DISPLAY);
-    if (engine->glesDisplay == EGL_NO_DISPLAY || eglInitialize(engine->glesDisplay, 0, 0) != EGL_TRUE) { LOGE("GLES: Display/Başlatma Başarısız!"); return false; }
-
-    const EGLint attribs[] = { EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT, EGL_BLUE_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_RED_SIZE, 8, EGL_DEPTH_SIZE, 16, EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_NONE };
-    EGLConfig config;
-    EGLint num_config;
-    if (eglChooseConfig(engine->glesDisplay, attribs, &config, 1, &num_config) != EGL_TRUE || num_config == 0) { LOGE("GLES: Konfigürasyon bulunamadı!"); return false; }
-
-    engine->glesSurface = eglCreateWindowSurface(engine->glesDisplay, config, engine->app->window, NULL);
-    if (engine->glesSurface == EGL_NO_SURFACE) { LOGE("GLES: Surface oluşturulamadı!"); return false; }
-    
-    const EGLint context_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
-    engine->glesContext = eglCreateContext(engine->glesDisplay, config, EGL_NO_CONTEXT, context_attribs);
-    if (engine->glesContext == EGL_NO_CONTEXT) { LOGE("GLES: Context oluşturulamadı!"); return false; }
-    
-    if (eglMakeCurrent(engine->glesDisplay, engine->glesSurface, engine->glesSurface, engine->glesContext) != EGL_TRUE) { LOGE("GLES: Context aktif edilemedi!"); return false; }
-
-    LOGI("GLES: OpenGL ES 3.0 Başarıyla Başlatıldı. Fallback Devrede.");
-    return true;
-}
-
-// **************************** ÇİZİM KOMUTLARI (Mavi Ekran Testi) ****************************
-
-void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex, Engine* engine) {
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) { LOGE("Command Buffer başlatılamadı!"); return; }
-
-    VkRenderPassBeginInfo renderPassInfo{};
-    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassInfo.renderPass = engine->renderPass;
-    renderPassInfo.framebuffer = engine->swapchainFramebuffers[imageIndex];
-    renderPassInfo.renderArea.offset = {0, 0};
-    renderPassInfo.renderArea.extent = engine->swapchainExtent;
-
-    // Mavi Clear Color (R:0.1, G:0.3, B:0.5)
-    VkClearValue clearColor = {{{0.1f, 0.3f, 0.5f, 1.0f}}}; 
-    renderPassInfo.clearValueCount = 1;
-    renderPassInfo.pClearValues = &clearColor;
-
-    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
-    
-    // YENİ EKLEME: Pipeline'ı bağla ve çizim komutunu ekle
-    if (engine->graphicsPipeline != VK_NULL_HANDLE) {
-        vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, engine->graphicsPipeline);
-        
-        // DİKKAT: PBR Pipeline'ını beslemek için buraya model/vertex/index buffer bağlama ve çizim komutları gelecek.
-        // Şimdilik sadece ekranı temizliyor ve pipeline'ı bağlıyoruz (çizim komutu yoksa üçgen göremezsiniz).
-        // vkCmdBindVertexBuffers(...);
-        // vkCmdBindIndexBuffer(...);
-        // vkCmdDrawIndexed(commandBuffer, indexCount, 1, 0, 0, 0); 
-    }
-
-    vkCmdEndRenderPass(commandBuffer);
-
-    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) { LOGE("Command Buffer sonlandırılamadı!"); }
-}
-
-void draw_vulkan_frame(Engine* engine) {
-    // ... (Çizim mantığı aynı kaldı)
-    vkWaitForFences(engine->device, 1, &engine->inFlightFence, VK_TRUE, UINT64_MAX);
-    uint32_t imageIndex;
-    VkResult result = vkAcquireNextImageKHR(engine->device, engine->swapchain, UINT64_MAX, engine->imageAvailableSemaphore, VK_NULL_HANDLE, &imageIndex);
-
-    // Eğer Swapchain yeniden oluşturulması gerekiyorsa (ekran döndü vs.)
-    if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR) { return; } 
-
-    if (result != VK_SUCCESS) { LOGE("Görüntü alınamadı!"); return; }
-
-    vkResetFences(engine->device, 1, &engine->inFlightFence);
-    vkResetCommandBuffer(engine->commandBuffers[imageIndex], 0);
-
-    recordCommandBuffer(engine->commandBuffers[imageIndex], imageIndex, engine);
-
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-
-    VkSemaphore waitSemaphores[] = {engine->imageAvailableSemaphore};
-    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    submitInfo.waitSemaphoreCount = 1;
-    submitInfo.pWaitSemaphores = waitSemaphores;
-    submitInfo.pWaitDstStageMask = waitStages;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &engine->commandBuffers[imageIndex];
-
-    VkSemaphore signalSemaphores[] = {engine->renderFinishedSemaphore};
-    
-    // HATA DÜZELTMESİ: signalSemaphores yerine signalSemaphoreCount kullanılmalıdır.
-    submitInfo.signalSemaphoreCount = 1; 
-    submitInfo.pSignalSemaphores = signalSemaphores;
-    // DÜZELTME SONU
-
-    if (vkQueueSubmit(engine->graphicsQueue, 1, &submitInfo, engine->inFlightFence) != VK_SUCCESS) { LOGE("Çizim komutu gönderilemedi!"); }
-
-    VkPresentInfoKHR presentInfo{};
-    presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = signalSemaphores;
-
-    VkSwapchainKHR swapChains[] = {engine->swapchain};
-    presentInfo.swapchainCount = 1;
-    presentInfo.pSwapchains = swapChains;
-    presentInfo.pImageIndices = &imageIndex;
-    
-    vkQueuePresentKHR(engine->presentQueue, &presentInfo);
-}
-
-void draw_gles_frame(Engine* engine) {
-    // ... (GLES çizimi)
-    if (engine->glesDisplay != EGL_NO_DISPLAY) {
-        // Mavi ekran çizimi (Vulkan ile aynı renk)
-        glClearColor(0.1f, 0.3f, 0.5f, 1.0f); 
-        glClear(GL_COLOR_BUFFER_BIT);
-        eglSwapBuffers(engine->glesDisplay, engine->glesSurface);
-    }
-}
-
-// **************************** VULKAN VE GENEL TEMİZLEME ****************************
-
-void cleanup_vulkan(Engine* engine) {
     if (engine->device != VK_NULL_HANDLE) {
-        vkDeviceWaitIdle(engine->device);
+        vkDeviceWaitIdle(engine->device); // Tüm işlemlerin bitmesini bekle
 
-        // YENİ EKLENEN OBJE TEMİZLİĞİ
-        if (engine->graphicsPipeline) { vkDestroyPipeline(engine->device, engine->graphicsPipeline, nullptr); }
-        if (engine->pipelineLayout) { vkDestroyPipelineLayout(engine->device, engine->pipelineLayout, nullptr); }
-        // TEMİZLİK SONU
-        
-        if (engine->renderFinishedSemaphore) { vkDestroySemaphore(engine->device, engine->renderFinishedSemaphore, nullptr); }
-        if (engine->imageAvailableSemaphore) { vkDestroySemaphore(engine->device, engine->imageAvailableSemaphore, nullptr); }
-        if (engine->inFlightFence) { vkDestroyFence(engine->device, engine->inFlightFence, nullptr); }
-        for (auto framebuffer : engine->swapchainFramebuffers) { vkDestroyFramebuffer(engine->device, framebuffer, nullptr); }
-        if (engine->renderPass) { vkDestroyRenderPass(engine->device, engine->renderPass, nullptr); }
-        for (auto imageView : engine->swapchainImageViews) { vkDestroyImageView(engine->device, imageView, nullptr); }
-        if (engine->commandPool) { vkDestroyCommandPool(engine->device, engine->commandPool, nullptr); }
-        if (engine->swapchain) { vkDestroySwapchainKHR(engine->device, engine->swapchain, nullptr); }
+        // Image View'ları temizle
+        for (auto imageView : engine->swapChainImageViews) {
+            vkDestroyImageView(engine->device, imageView, nullptr);
+        }
+        engine->swapChainImageViews.clear();
+
+        // Swap Chain'i temizle
+        if (engine->swapChain != VK_NULL_HANDLE) {
+            vkDestroySwapchainKHR(engine->device, engine->swapChain, nullptr);
+            engine->swapChain = VK_NULL_HANDLE;
+        }
+
+        // Mantıksal Cihazı temizle
         vkDestroyDevice(engine->device, nullptr);
+        engine->device = VK_NULL_HANDLE;
     }
-    if (engine->surface) { vkDestroySurfaceKHR(engine->vkInstance, engine->surface, nullptr); }
-    if (engine->vkInstance) { vkDestroyInstance(engine->vkInstance, nullptr); }
+
+    // Surface'ı temizle
+    if (engine->surface != VK_NULL_HANDLE) {
+        vkDestroySurfaceKHR(engine->instance, engine->surface, nullptr);
+        engine->surface = VK_NULL_HANDLE;
+    }
+
+    // Instance'ı temizle
+    if (engine->instance != VK_NULL_HANDLE) {
+        vkDestroyInstance(engine->instance, nullptr);
+        engine->instance = VK_NULL_HANDLE;
+    }
     
-    *engine = { .app = engine->app }; 
-    LOGI("VULKAN: Temizleme Başarılı.");
+    LOGI("Vulkan: Display nesneleri temizlendi.");
 }
 
-bool init_vulkan_full(Engine* engine) {
-    if (engine->app->window == NULL) { return false; }
 
-    // YÖNTEM 1 (ZORLU): KRİTİK GRALLOC HİLESİ (EN YÜKSEK ÖNCELİK)
-    // Gralloc hatası alıyorduk. Pencere boyutunu zorla 1x1 yaparak buffer atama hatasını atlatıyoruz.
-    ANativeWindow_setBuffersGeometry(engine->app->window, 1, 1, WINDOW_FORMAT_RGBX_8888);
+// -----------------------------------------------------------------------------
+// ANA MOTOR FONKSİYONLARI
+// -----------------------------------------------------------------------------
 
-    if (!createInstanceAndSurface(engine)) return false;
-    if (!pickPhysicalDevice(engine)) return false;
-    if (!createLogicalDevice(engine)) return false;
-    
-    // Not: Vulkan'ı çalıştırmak için farklı 3 yöntemi kodun genel akışında uyguladık:
-    // 1. ANativeWindow_setBuffersGeometry ile Gralloc hatasını atlatmak (Şu anki deneme)
-    // 2. Eğer 1 başarısız olursa, motorun çökmesini önleyip (cleanup_vulkan) 3. yönteme (GLES) geçmek.
-    // 3. OpenGL ES 3.0 Fallback'i.
+/**
+ * Uygulama ilk kez başlatıldığında veya pencere değiştiğinde (ekran döndürme vb.) çağrılır.
+ */
+void engine_init_display(Engine* engine) {
+    LOGI("Engine: Display başlatılıyor...");
 
-    if (!createSwapChain(engine)) return false; 
-    
-    if (!createImageViews(engine)) return false;
-    if (!createRenderPass(engine)) return false;
-    
-    // YENİ PIPELINE OLUŞTURMA ADIMLARI
-    if (!createPipelineLayout(engine)) return false;
-    if (!createGraphicsPipeline(engine)) { 
-        // Pipeline oluşturulamasa bile devam ediyoruz, çünkü bu beklenmedik bir durumdur (Shader yok).
-        // Eğer cihaz Vulkan'ı başlatabilirse, en azından mavi ekranı göreceğiz.
-    }
-    // PIPELINE SONU
-    
-    if (!createFramebuffers(engine)) return false;
-    if (!createCommandObjects(engine)) return false;
-    if (!createSyncObjects(engine)) return false;
+    // Vulkan'ı başlat
+    if (!createInstance(engine)) goto ERROR_EXIT;
+    if (!createSurface(engine)) goto ERROR_EXIT;
+    if (!pickPhysicalDevice(engine)) goto ERROR_EXIT;
+    if (!createLogicalDevice(engine)) goto ERROR_EXIT;
+    if (!createSwapChain(engine)) goto ERROR_EXIT;
+    if (!createImageViews(engine)) goto ERROR_EXIT;
 
-    engine->is_vulkan = true;
-    LOGI("VULKAN: Tüm Motor Temelleri Hazır. PBR/RTX Kodunuzu Entegre Etmeye Hazır.");
-    return true;
+    // Eğer buraya geldiysek, Vulkan başarılı
+    LOGI("Vulkan Başarıyla Başlatıldı!");
+    engine->animating = true;
+    return;
+
+ERROR_EXIT:
+    // Hata durumunda tüm kaynakları temizle
+    LOGE("KRİTİK HATA: Vulkan başlatma başarısız. Geri Dönüş (Fallback) yapılamadı.");
+    engine_term_display(engine);
+    // Bu noktada GLES'e geçmek için bir kod olmalıydı, ancak şimdilik uygulamayı bırakıyoruz.
+    engine->app->destroyRequested = 1; 
 }
 
-// **************************** ANA UYGULAMA DÖNGÜSÜ ****************************
 
-void engine_handle_cmd(struct android_app* app, int32_t cmd) {
+/**
+ * Her kare çizildiğinde çağrılır.
+ * Şimdilik sadece başarılı bir şekilde başlatıldığımızı göstermek için boş.
+ */
+void engine_draw_frame(Engine* engine) {
+    if (!engine->animating) {
+        return;
+    }
+
+    // Vulkan çizim komutları buraya gelecek
+    // Örneğin: Komut tamponunu kaydet, çizimi yap, sun (present)
+
+    // Şimdilik sadece bir kare çizim komutunun başarılı olduğunu varsayalım:
+    // Çizim komutları ve Swapchain Present kodu buraya gelecek.
+}
+
+/**
+ * Sensör, dokunmatik ve pencere gibi komutları işler.
+ */
+void engine_handle_cmd(android_app* app, int32_t cmd) {
     Engine* engine = (Engine*)app->userData;
 
     switch (cmd) {
         case APP_CMD_INIT_WINDOW:
-            if (engine->app->window != NULL) {
-                // YÖNTEM 1 (ZORLU): Vulkan'ı Gralloc Hilesi ile Deneme
-                if (init_vulkan_full(engine)) {
-                    engine->running = true;
-                    LOGI("BAŞLATMA: Vulkan Motoru Başarıyla Seçildi (Yöntem 1).");
-                    return;
-                }
-
-                LOGE("Vulkan başlatma başarısız oldu (Yöntem 1). Yöntem 3 (GLES) Fallback deneniyor...");
-                cleanup_vulkan(engine); 
-
-                // YÖNTEM 3: GLES Fallback
-                if (init_gles_fallback(engine)) {
-                    engine->running = true;
-                    LOGI("BAŞLATMA: GLES Fallback Motoru Seçildi (Yöntem 3).");
-                    return;
-                }
+            // Pencere oluşturuldu/yeniden oluşturuldu
+            if (app->window != NULL) {
                 
-                LOGE("KRİTİK HATA: Vulkan veya GLES Başlatılamadı. Uygulama Kapanıyor.");
-                ANativeActivity_finish(app->activity);
-                break;
+                // --- KRİTİK ÇÖKME DÜZELTMESİ BAŞLANGIÇ ---
+                // Adreno/Qualcomm cihazlarda Vulkan/EGL başlatma çökmesini (Unknown Format)
+                // önlemek için pencere yüzeyinin formatını açıkça RGBA_8888 olarak ayarlıyoruz.
+                ANativeWindow_setBuffersGeometry(
+                    app->window,
+                    ANativeWindow_getWidth(app->window),
+                    ANativeWindow_getHeight(app->window),
+                    WINDOW_FORMAT_RGBA_8888
+                );
+                // --- KRİTİK ÇÖKME DÜZELTMESİ SONUÇ ---
+
+                engine->app->window = app->window;
+                engine_init_display(engine);
+                engine_draw_frame(engine);
             }
             break;
         case APP_CMD_TERM_WINDOW:
-            engine->running = false;
-            if (engine->is_vulkan) {
-                cleanup_vulkan(engine);
-            } else if (engine->glesDisplay != EGL_NO_DISPLAY) {
-                // GLES Temizleme
-                eglMakeCurrent(engine->glesDisplay, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-                eglDestroyContext(engine->glesDisplay, engine->glesContext);
-                eglDestroySurface(engine->glesDisplay, engine->glesSurface);
-                eglTerminate(engine->glesDisplay);
-                engine->glesDisplay = EGL_NO_DISPLAY;
-                engine->glesSurface = EGL_NO_SURFACE;
-                engine->glesContext = EGL_NO_CONTEXT;
-                LOGI("GLES: Temizleme Başarılı.");
-            }
+            // Pencere yok ediliyor (Uygulama arka plana geçti veya kapatıldı)
+            engine_term_display(engine);
             break;
         case APP_CMD_GAINED_FOCUS:
-            engine->running = true;
+            // Uygulama odak kazandı, animasyonu başlat
+            engine->animating = true;
             break;
         case APP_CMD_LOST_FOCUS:
-            // Arka plana atıldığında CPU/GPU döngüsünü durdurmak iyi bir pratiktir.
-            engine->running = false;
+            // Uygulama odak kaybetti, animasyonu durdur
+            engine->animating = false;
+            engine_draw_frame(engine); // Son bir kez çizim yap
+            break;
+        case APP_CMD_DESTROY:
+            // Uygulama sonlandırılıyor
+            engine_term_display(engine);
+            LOGI("Engine: Uygulama sonlandırıldı.");
             break;
     }
 }
 
-void android_main(struct android_app* app) {
-    Engine engine = { .app = app };
-    app->userData = &engine;
-    app->onAppCmd = engine_handle_cmd;
-    
-    // Uygulama döngüsü
-    while (1) {
+/**
+ * Dokunmatik/Giriş olaylarını işler.
+ */
+int32_t engine_handle_input(struct android_app* app, AInputEvent* event) {
+    // Şimdilik dokunma olaylarını ignore ediyoruz.
+    return 0;
+}
+
+/**
+ * Android ana döngüsü (Main Loop)
+ */
+void android_main(struct android_app* state) {
+    Engine engine{};
+    state->userData = &engine;
+    state->onAppCmd = engine_handle_cmd;
+    state->onInputEvent = engine_handle_input;
+    engine.app = state;
+    engine.animating = false;
+
+    LOGI("Engine: Main Loop başladı.");
+
+    // Ana olay döngüsü
+    while (state->destroyRequested == 0) {
         int ident;
         int events;
         struct android_poll_source* source;
-        while ((ident = ALooper_pollAll(engine.running ? 0 : -1, NULL, &events, (void**)&source)) >= 0) {
+
+        // Bir sonraki olayı bekle
+        while ((ident = ALooper_pollAll(engine.animating ? 0 : -1, NULL, &events, (void**)&source)) >= 0) {
+            
+            // Bir olay geldi, onu işle
             if (source != NULL) {
-                source->process(app, source);
+                source->process(state, source);
             }
-            if (app->destroyRequested != 0) {
-                // Uygulama kapanma talebi geldi
-                return;
+
+            // Uygulama kapatılmak istendiyse döngüyü kır
+            if (state->destroyRequested != 0) {
+                break;
             }
         }
-        
-        if (engine.running) {
-            // Oyun mantığını güncelle
-            engine.day_night_cycle_time += 0.001f;
-            if (engine.day_night_cycle_time > 360.0f) engine.day_night_cycle_time = 0.0f;
-            
-            // Çizim
-            if (engine.is_vulkan) {
-                draw_vulkan_frame(&engine);
-            } else if (engine.glesDisplay != EGL_NO_DISPLAY) {
-                draw_gles_frame(&engine);
-            }
+
+        if (engine.animating) {
+            engine_draw_frame(&engine);
         }
     }
+    
+    LOGI("Engine: Main Loop sona erdi.");
 }
-

@@ -175,7 +175,7 @@ bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, QueueFamily
     VkPhysicalDeviceProperties deviceProperties;
     vkGetPhysicalDeviceProperties(device, &deviceProperties);
 
-    if (deviceProperties.apiVersion < VK_API_VERSION_1_2) {
+    if (deviceProperties.apiVersion < VK_API_VERSION_1_1) {
         return false;
     }
 
@@ -364,7 +364,7 @@ bool createInstanceAndSurface(Engine* engine) {
     appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
     appInfo.pEngineName = "CustomVulkanEngine";
     appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-    appInfo.apiVersion = VK_API_VERSION_1_2;
+    appInfo.apiVersion = VK_API_VERSION_1_1;
 
     VkInstanceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;

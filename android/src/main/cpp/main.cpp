@@ -3,13 +3,15 @@
 #include <vulkan/vulkan.h>
 #include <vulkan/vulkan_android.h>
 #include <android/log.h>
+#include <EGL/egl.h> // GLES Hack için eklendi
+#include <GLES3/gl3.h> // GLES Hack için eklendi
 #include <vector>
 #include <set>
 #include <algorithm>
 #include <stdexcept>
 #include <string>
 
-#define LOG_TAG "VulkanEngine"
+#define LOG_TAG "HybridEngine"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
@@ -27,7 +29,7 @@ struct Engine {
     VkInstance vkInstance = VK_NULL_HANDLE;
     VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
     VkDevice device = VK_NULL_HANDLE;
-    VkSurfaceKHR surface = VK_NULL_HANDLE;
+    VkSurfaceKHR surface = VK_NULL_HANDLE; // Bu yüzey GLES tarafından stabilize edilecek
 
     // PBR ve Swapchain
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
@@ -60,43 +62,37 @@ struct SwapChainSupportDetails {
 
 // ********************************** UTILITY FONKSİYONLARI **********************************
 
-// Swap Chain Yüzey Formatını Seçme (KRİTİK DÜZELTME: Güvenilir formatı zorla seçme)
+// Swap Chain Yüzey Formatını Seçme (HATA ATLAMA ÇÖZÜMÜ)
 VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats) {
-    // 1. ADRENO ve Android cihazlar için en yaygın ve güvenilir formatı arayın (B8G8R8A8_UNORM + SRGB renk alanı).
+    // 1. En güvenilir formatı arayın (B8G8R8A8_UNORM + SRGB)
     for (const auto& availableFormat : availableFormats) {
         if (availableFormat.format == VK_FORMAT_B8G8R8A8_UNORM &&
             availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-            LOGI("Seçilen SwapChain Formatı: VK_FORMAT_B8G8R8A8_UNORM");
+            LOGI("Seçilen SwapChain Formatı: VK_FORMAT_B8G8R8A8_UNORM (TERCİH EDİLEN)");
             return availableFormat;
         }
     }
 
-    // 2. Eğer ilk tercih edilemiyorsa, alternatif olarak R8G8B8A8_UNORM formatını arayın.
-    for (const auto& availableFormat : availableFormats) {
-        if (availableFormat.format == VK_FORMAT_R8G8B8A8_UNORM &&
-            availableFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
-            LOGI("Seçilen SwapChain Formatı: VK_FORMAT_R8G8B8A8_UNORM (Alternatif)");
-            return availableFormat;
-        }
+    // 2. Format 56 hatasını atlatmak için listedeki bir sonraki formatı dene
+    if (availableFormats.size() > 1) {
+        LOGI("Seçilen SwapChain Formatı: Cihazın Sunduğu 2. Format (Hata Atlatma)");
+        return availableFormats[1];
     }
     
-    // 3. Eğer yukarıdaki popüler formatların hiçbiri bulunamazsa, 
-    // sistemin sunduğu İLK formatı kullanmaya geri dön.
-    LOGI("Seçilen SwapChain Formatı: Cihazın İlk Sunduğu Format");
+    // 3. Son çare
+    LOGI("Seçilen SwapChain Formatı: Cihazın Sunduğu İlk Format (Son Çare)");
     return availableFormats[0];
 }
 
-// Swap Chain Sunum Modunu Seçme (Daha Konservatif Revizyon: Sadece FIFO)
+// Swap Chain Sunum Modunu Seçme
 VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes) {
-    // Tüm cihazlarda desteklenmesi zorunlu olan ve en güvenilir mod olan FIFO'yu tercih et.
-    return VK_PRESENT_MODE_FIFO_KHR;
+    return VK_PRESENT_MODE_FIFO_KHR; // En güvenilir mod
 }
 
 // Swap Chain Kapsamını Seçme (Ekran Çözünürlüğü)
-// KRİTİK DÜZELTME: Hata (4x4) aldığı için boyutu 1x1 olarak zorluyoruz.
+// KRİTİK DÜZELTME: Boyutu 1x1 olarak zorluyoruz.
 VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, ANativeWindow* window) {
-    // Cihazınızın yaşadığı Gralloc (4x4) boyut hatasını atlamak için
-    // boyutu 1x1 olarak zorluyoruz. 
+    // Gralloc (4x4) boyut hatasını atlamak için 1x1'e zorlama. 
     VkExtent2D actualExtent = {
         static_cast<uint32_t>(1),
         static_cast<uint32_t>(1)
@@ -105,8 +101,9 @@ VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities, ANativ
     return actualExtent;
 }
 
-// Swap Chain Desteklerini Sorgulama
+// Swap Chain Desteklerini Sorgulama (Diğer yardımcı fonksiyonlar aynı kalır)
 SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device, VkSurfaceKHR surface) {
+    // ... (Önceki kodunuz ile aynı)
     SwapChainSupportDetails details;
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
 
@@ -127,8 +124,9 @@ SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device, VkSurface
     return details;
 }
 
-// Cihazın Gerekli Uzantıları Destekleyip Desteklemediğini Kontrol Eder
+// Cihaz Uzantı Kontrolü (Aynı kalır)
 bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
+    // ... (Önceki kodunuz ile aynı)
     uint32_t extensionCount = 0;
     vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
 
@@ -144,8 +142,9 @@ bool checkDeviceExtensionSupport(VkPhysicalDevice device) {
     return requiredExtensions.empty();
 }
 
-// Queue Family'leri Bulma
+// Queue Family'leri Bulma (Aynı kalır)
 QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) {
+    // ... (Önceki kodunuz ile aynı)
     QueueFamilyIndices indices;
     uint32_t queueFamilyCount = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
@@ -174,10 +173,10 @@ QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surfa
     return indices;
 }
 
-// Cihazın Vulkan 1.1 Desteğini Kontrol Eder
+// Cihaz Uygunluk Kontrolü (Aynı kalır)
 bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, QueueFamilyIndices& indices) {
+    // ... (Önceki kodunuz ile aynı)
     VkPhysicalDeviceProperties deviceProperties;
-    // DÜZELTME: İkinci argüman olarak yapının adresi (&) kullanılmalı.
     vkGetPhysicalDeviceProperties(device, &deviceProperties); 
 
     if (deviceProperties.apiVersion < VK_API_VERSION_1_1) {
@@ -196,10 +195,67 @@ bool isDeviceSuitable(VkPhysicalDevice device, VkSurfaceKHR surface, QueueFamily
     return extensionsSupported && swapChainAdequate && indices.isComplete();
 }
 
+// ********************************** KRİTİK GLES HACK FONKSİYONU **********************************
+
+// GLES ile yüzeyi stabilize edip hemen temizler (Vulkan'ı kurtarır)
+void gles_surface_stabilization_hack(ANativeWindow* window) {
+    LOGI("GLES Yüzey Stabilizasyon Hack'i Başlatılıyor...");
+
+    EGLDisplay display = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (display == EGL_NO_DISPLAY) { LOGE("EGL Display alınamadı!"); return; }
+    
+    eglInitialize(display, 0, 0);
+
+    const EGLint attribs[] = {
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES3_BIT,
+        EGL_BLUE_SIZE, 8,
+        EGL_GREEN_SIZE, 8,
+        EGL_RED_SIZE, 8,
+        EGL_DEPTH_SIZE, 16,
+        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+        EGL_NONE
+    };
+    EGLConfig config;
+    EGLint num_config;
+    if (eglChooseConfig(display, attribs, &config, 1, &num_config) != EGL_TRUE || num_config == 0) { 
+        LOGE("EGL Konfigürasyonu seçilemedi!"); 
+        eglTerminate(display);
+        return; 
+    }
+
+    // 1. Surface Oluşturma (Bu adım Adreno sürücüsünü hazırlar)
+    EGLSurface surface = eglCreateWindowSurface(display, config, window, NULL);
+    if (surface == EGL_NO_SURFACE) { LOGE("EGL Surface oluşturulamadı!"); eglTerminate(display); return; }
+    
+    // 2. Context Oluşturma
+    const EGLint context_attribs[] = { EGL_CONTEXT_CLIENT_VERSION, 3, EGL_NONE };
+    EGLContext context = eglCreateContext(display, config, EGL_NO_CONTEXT, context_attribs);
+    if (context == EGL_NO_CONTEXT) { 
+        LOGE("EGL Context oluşturulamadı!"); 
+        eglDestroySurface(display, surface); 
+        eglTerminate(display); 
+        return; 
+    }
+    
+    // 3. Context'i aktif et ve GLES çağrısı yap (Sürücüyü kesin uyandırmak için)
+    eglMakeCurrent(display, surface, surface, context);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f); 
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    // 4. Temizleme (Vulkan'a devretmek için her şeyi yok et)
+    eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+    eglDestroyContext(display, context);
+    eglDestroySurface(display, surface);
+    eglTerminate(display);
+
+    LOGI("GLES Hack Başarılı. Yüzey Vulkan için temizlendi ve hazır.");
+}
+
 // ********************************** BAŞLATMA FONKSİYONLARI **********************************
 
-// Fiziksel Cihaz Seçimi
+// Fiziksel Cihaz Seçimi (Aynı kalır)
 bool pickPhysicalDevice(Engine* engine) {
+    // ... (Önceki kodunuz ile aynı)
     uint32_t deviceCount = 0;
     vkEnumeratePhysicalDevices(engine->vkInstance, &deviceCount, nullptr);
 
@@ -216,7 +272,6 @@ bool pickPhysicalDevice(Engine* engine) {
         if (isDeviceSuitable(device, engine->surface, indices)) {
             engine->physicalDevice = device;
             VkPhysicalDeviceProperties deviceProperties;
-            // DÜZELTME: İkinci argüman olarak yapının adresi (&) kullanılmalı.
             vkGetPhysicalDeviceProperties(device, &deviceProperties);
             LOGI("Seçilen Fiziksel Cihaz: %s (Vulkan API v%d.%d.%d)",
                  deviceProperties.deviceName,
@@ -231,8 +286,9 @@ bool pickPhysicalDevice(Engine* engine) {
     return false;
 }
 
-// Logical Device Oluşturma
+// Logical Device Oluşturma (Aynı kalır)
 bool createLogicalDevice(Engine* engine) {
+    // ... (Önceki kodunuz ile aynı)
     QueueFamilyIndices indices = findQueueFamilies(engine->physicalDevice, engine->surface);
 
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
@@ -270,16 +326,22 @@ bool createLogicalDevice(Engine* engine) {
     return true;
 }
 
-// Swap Chain Oluşturma
+// Swap Chain Oluşturma (Önceki tüm hileler dahil)
 bool createSwapChain(Engine* engine) {
+    // ... (Önceki kodunuz ile aynı)
     SwapChainSupportDetails swapChainSupport = querySwapChainSupport(engine->physicalDevice, engine->surface);
 
     VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
     VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
     VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities, engine->app->window);
 
-    // Maksimum uyumluluk için sadece minimum görüntü sayısını iste.
-    uint32_t imageCount = swapChainSupport.capabilities.minImageCount; 
+    // KRİTİK DÜZELTME: Minimum imaj sayısını minimum + 1 olarak zorluyoruz.
+    uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1; 
+    
+    // Max imaj sayısını aşmamaya dikkat et
+    if (swapChainSupport.capabilities.maxImageCount > 0 && imageCount > swapChainSupport.capabilities.maxImageCount) {
+        imageCount = swapChainSupport.capabilities.maxImageCount;
+    }
     
     VkSwapchainCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -322,17 +384,17 @@ bool createSwapChain(Engine* engine) {
     engine->swapchainImageFormat = surfaceFormat.format;
     engine->swapchainExtent = extent;
 
-    LOGI("Swap Chain (%dx%d) Başarıyla Oluşturuldu.", extent.width, extent.height);
+    LOGI("Swap Chain (%dx%d, Images:%d) Başarıyla Oluşturuldu.", extent.width, extent.height, imageCount);
     return true;
 }
 
-// Render Pass Oluşturma
+// Render Pass Oluşturma (Aynı kalır)
 bool createRenderPass(Engine* engine) {
+    // ... (Önceki kodunuz ile aynı)
     VkAttachmentDescription colorAttachment{};
     colorAttachment.format = engine->swapchainImageFormat;
     colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
     colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    // DÜZELTME: Yazım hatası düzeltildi.
     colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE; 
     colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
     colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -363,8 +425,9 @@ bool createRenderPass(Engine* engine) {
     return true;
 }
 
-// Vulkan Instance ve Surface Oluşturma
+// Vulkan Instance ve Surface Oluşturma (Aynı kalır)
 bool createInstanceAndSurface(Engine* engine) {
+    // ... (Önceki kodunuz ile aynı)
     VkApplicationInfo appInfo{};
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = "SevgiliOyunu_Vulkan_PBR";
@@ -410,8 +473,10 @@ bool init_vulkan(Engine* engine) {
     }
 
     if (!createInstanceAndSurface(engine)) return false;
-    if (!pickPhysicalDevice(engine)) return false;
-    if (!createLogicalDevice(engine)) return false;
+
+    // ********* KRİTİK GLES HACK ÇAĞRISI *********
+    gles_surface_stabilization_hack(engine->app->window);
+    // ********************************************
 
     // KRİTİK AYAR: Swap Chain oluşturulmadan önce pencere boyutunu zorla 1x1 yapıyoruz.
     int32_t set_buffers_result = ANativeWindow_setBuffersGeometry(
@@ -428,6 +493,8 @@ bool init_vulkan(Engine* engine) {
     }
 
 
+    if (!pickPhysicalDevice(engine)) return false;
+    if (!createLogicalDevice(engine)) return false;
     if (!createSwapChain(engine)) return false;
     if (!createRenderPass(engine)) return false;
 
@@ -435,14 +502,14 @@ bool init_vulkan(Engine* engine) {
     return true;
 }
 
-// Uygulama Komutlarını İşleyen Fonksiyon
+// Uygulama Komutlarını İşleyen Fonksiyon (Aynı kalır)
 void engine_handle_cmd(struct android_app* app, int32_t cmd) {
     Engine* engine = (Engine*)app->userData;
 
     switch (cmd) {
         case APP_CMD_INIT_WINDOW:
             if (engine->app->window != NULL) {
-                if (init_vulkan(engine)) {
+                if (init_vulkan(engine)) { // Vulkan'ı başlat
                     engine->running = true;
                 }
             }
@@ -455,14 +522,14 @@ void engine_handle_cmd(struct android_app* app, int32_t cmd) {
     }
 }
 
-// Ana Android Giriş Noktası
+// Ana Android Giriş Noktası (Aynı kalır)
 void android_main(struct android_app* state) {
     struct Engine engine = {0};
     state->userData = &engine;
     engine.app = state;
     state->onAppCmd = engine_handle_cmd;
 
-    LOGI("Vulkan Native Engine Başlatıldı.");
+    LOGI("Hibrit Vulkan/GLES Native Engine Başlatıldı.");
 
     int ident;
     int events;
@@ -479,9 +546,9 @@ void android_main(struct android_app* state) {
             break;
         }
 
-        // DÜZELTME: engine bir yapı (struct) olduğu için nokta (.) operatörü kullanılmalı.
         if (engine.running) { 
-            // Vulkan Çizim (vkQueueSubmit, vkQueuePresentKHR) buraya gelecek.
+            // VULKAN Çizim (vkQueueSubmit, vkQueuePresentKHR) buraya gelecek.
+            // Şimdilik boş kalacak, sadece çalışıp çalışmadığını göreceğiz.
         }
     }
 }
